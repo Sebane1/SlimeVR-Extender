@@ -21,7 +21,6 @@ jobs:
           - name: windows
             runner: windows-latest
             platform: windows
-            electron_target: win
             electron_arch: x64
             bindings_dir: win-x64
             extender_rid: win-x64
@@ -30,9 +29,8 @@ jobs:
             driver_file: slimevr-openvr-driver-win64.zip
 
           - name: linux-x64
-            runner: ubuntu-22.04
+            runner: ubuntu-latest
             platform: linux
-            electron_target: linux
             electron_arch: x64
             bindings_dir: linux-x64
             extender_rid: linux-x64
@@ -41,9 +39,8 @@ jobs:
             driver_file: slimevr-openvr-driver-x64-linux.zip
 
           - name: linux-aarch64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
             platform: linux
-            electron_target: linux
             electron_arch: arm64
             bindings_dir: linux-arm64
             extender_rid: linux-arm64
@@ -54,7 +51,6 @@ jobs:
           - name: macos
             runner: macos-latest
             platform: macos
-            electron_target: mac
             electron_arch: universal
             bindings_dir: ""
             extender_rid: osx-x64
@@ -71,7 +67,7 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      - name: Checkout SlimeVR-Extender Repo
+      - name: Checkout SlimeVR-Extender
         uses: actions/checkout@v6
         with:
           path: SlimeVR-Extender-Repo
@@ -89,12 +85,18 @@ jobs:
         shell: bash
         run: |
           set -e
+
           rm -rf solarxr-protocol
+
           git clone \
             --branch main-extended \
             --single-branch \
+            --recurse-submodules \
             https://github.com/Sebane1/SolarXR-Protocol.git \
             solarxr-protocol
+
+          git -C solarxr-protocol submodule update --init --recursive
+
           git -C solarxr-protocol remote -v
           git -C solarxr-protocol branch --show-current
           git -C solarxr-protocol rev-parse HEAD
@@ -125,8 +127,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            gcc \
-            g++ \
             cmake \
             ninja-build \
             curl \
@@ -142,6 +142,13 @@ jobs:
             libgbm1 \
             rpm
 
+      - name: Install GCC 16
+        if: matrix.os.platform == 'linux'
+        uses: egor-tensin/setup-gcc@v2
+        with:
+          version: 16
+          platform: x64
+
       - name: Setup CMake
         if: matrix.os.platform != 'macos'
         uses: lukka/get-cmake@latest
@@ -151,6 +158,7 @@ jobs:
         shell: bash
         run: |
           set -e
+
           cmake \
             -S bindings-provider \
             -B "bindings-provider/build/${{ matrix.os.bindings_dir }}" \
@@ -161,6 +169,7 @@ jobs:
         shell: bash
         run: |
           set -e
+
           cmake \
             --build "bindings-provider/build/${{ matrix.os.bindings_dir }}" \
             --config Release \
@@ -170,13 +179,18 @@ jobs:
         shell: bash
         run: |
           set -e
+
           chmod +x ./gradlew || true
-          ./gradlew :server:desktop:shadowJar --build-cache
+
+          ./gradlew \
+            :server:desktop:shadowJar \
+            --build-cache
 
       - name: Verify Desktop Server JAR
         shell: bash
         run: |
           set -e
+
           ls -lah server/desktop/build/libs/
           test -f server/desktop/build/libs/slimevr.jar
 
@@ -188,12 +202,14 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm run build
 
-      - name: Download Platform OpenVR Driver
+      - name: Download OpenVR Driver
         if: matrix.os.driver_url != ''
         shell: bash
         run: |
           set -e
+
           mkdir -p driver
+
           curl \
             --fail \
             --location \
@@ -231,6 +247,7 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           set -e
+
           pnpm exec electron-builder \
             --win \
             --x64 \
@@ -245,6 +262,7 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           set -e
+
           pnpm exec electron-builder \
             --linux \
             --${{ matrix.os.electron_arch }} \
@@ -259,19 +277,12 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           set -e
+
           pnpm exec electron-builder \
             --mac \
             --universal \
             --config.extraMetadata.version="${{ steps.version.outputs.version }}" \
             --publish never
-
-      - name: Display Electron Artifacts
-        shell: bash
-        run: |
-          find gui/electron/dist/artifacts \
-            -maxdepth 4 \
-            -type f \
-            -print || true
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -299,14 +310,20 @@ jobs:
         shell: bash
         run: |
           set -e
+
           cd "extender-dist/${{ matrix.os.extender_rid }}"
-          zip -r "../../${{ matrix.os.extender_archive }}" .
+
+          zip \
+            -r \
+            "../../${{ matrix.os.extender_archive }}" \
+            .
 
       - name: Package Extender - Linux
         if: matrix.os.platform == 'linux'
         shell: bash
         run: |
           set -e
+
           tar \
             -czvf "${{ matrix.os.extender_archive }}" \
             -C "extender-dist/${{ matrix.os.extender_rid }}" \
@@ -317,8 +334,13 @@ jobs:
         shell: bash
         run: |
           set -e
+
           cd "extender-dist/${{ matrix.os.extender_rid }}"
-          zip -r "../../${{ matrix.os.extender_archive }}" .
+
+          zip \
+            -r \
+            "../../${{ matrix.os.extender_archive }}" \
+            .
 
       - name: Assemble Windows Release
         if: matrix.os.platform == 'windows'
@@ -409,7 +431,7 @@ jobs:
 
   build-android:
     name: Build Android APK
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout SlimeVR-Server Extended
@@ -424,12 +446,18 @@ jobs:
         shell: bash
         run: |
           set -e
+
           rm -rf solarxr-protocol
+
           git clone \
             --branch main-extended \
             --single-branch \
+            --recurse-submodules \
             https://github.com/Sebane1/SolarXR-Protocol.git \
             solarxr-protocol
+
+          git -C solarxr-protocol submodule update --init --recursive
+
           git -C solarxr-protocol remote -v
           git -C solarxr-protocol branch --show-current
           git -C solarxr-protocol rev-parse HEAD
@@ -470,13 +498,18 @@ jobs:
           ANDROID_KEY_PASSWD: ${{ secrets.ANDROID_KEY_PASSWD }}
         run: |
           set -e
+
           chmod +x ./gradlew || true
-          ./gradlew :server:android:build --build-cache
+
+          ./gradlew \
+            :server:android:build \
+            --build-cache
 
       - name: Locate Android APK
         shell: bash
         run: |
           set -e
+
           find \
             server/android/build/outputs \
             -type f \

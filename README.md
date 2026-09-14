@@ -4,9 +4,9 @@ A multiplatform patcher that adds additional bones that are unsupported by the m
 These additions are currently based on the SlimeVR re-write which is still in active experimental development. Expect bugs.
 
 Extra bones added:
-Tail Tracking,
-Bust Tracking,
-Left And Right Posterior
+- Tail Tracking
+- Bust Tracking
+- Left And Right Posterior
 
 ### Usage:
 

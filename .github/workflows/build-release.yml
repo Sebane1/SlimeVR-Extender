@@ -42,20 +42,21 @@ jobs:
           ref: main-extended
           fetch-depth: 0
 
-      - name: Checkout Submodules Safely & Fix Codegen Paths
+      - name: Checkout Sebane1 SolarXR-Protocol Submodule
         shell: bash
         run: |
+          git config submodule.solarxr-protocol.url https://github.com/Sebane1/SolarXR-Protocol.git || true
           git submodule update --init --recursive || {
-            echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
-            git submodule update --init --remote --recursive || true
+            echo "Submodule checkout failed, cloning Sebane1/SolarXR-Protocol directly..."
+            rm -rf solarxr-protocol
+            git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
           }
-          if [ ! -d "solarxr-protocol" ]; then
-            echo "solarxr-protocol missing, cloning default repository..."
-            git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
-          fi
-          mkdir -p solarxr-protocol/kotlin-codegen
+          mkdir -p solarxr-protocol/kotlin-codegen solarxr-protocol/protocol/kotlin solarxr-protocol/rpc/codegen solarxr-protocol/rpc/kotlin
           if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
             echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
+          fi
+          if [ ! -f "solarxr-protocol/protocol/kotlin/build.gradle.kts" ]; then
+            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/protocol/kotlin/build.gradle.kts
           fi
 
       - name: Setup Java
@@ -167,20 +168,21 @@ jobs:
           ref: main-extended
           fetch-depth: 0
 
-      - name: Checkout Submodules Safely & Fix Codegen Paths
+      - name: Checkout Sebane1 SolarXR-Protocol Submodule
         shell: bash
         run: |
+          git config submodule.solarxr-protocol.url https://github.com/Sebane1/SolarXR-Protocol.git || true
           git submodule update --init --recursive || {
-            echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
-            git submodule update --init --remote --recursive || true
+            echo "Submodule checkout failed, cloning Sebane1/SolarXR-Protocol directly..."
+            rm -rf solarxr-protocol
+            git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
           }
-          if [ ! -d "solarxr-protocol" ]; then
-            echo "solarxr-protocol missing, cloning default repository..."
-            git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
-          fi
-          mkdir -p solarxr-protocol/kotlin-codegen
+          mkdir -p solarxr-protocol/kotlin-codegen solarxr-protocol/protocol/kotlin solarxr-protocol/rpc/codegen solarxr-protocol/rpc/kotlin
           if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
             echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
+          fi
+          if [ ! -f "solarxr-protocol/protocol/kotlin/build.gradle.kts" ]; then
+            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/protocol/kotlin/build.gradle.kts
           fi
 
       - name: Setup Java

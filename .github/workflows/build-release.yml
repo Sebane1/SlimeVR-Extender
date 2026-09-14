@@ -63,7 +63,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '25'
 
       - name: Setup Node.js & PNPM
         uses: actions/setup-node@v4
@@ -85,7 +85,7 @@ jobs:
       - name: Build Shadow JAR
         run: |
           chmod +x ./gradlew || true
-          ./gradlew shadowJar
+          ./gradlew shadowJar -x :server:android
 
       - name: Install Frontend Dependencies
         run: pnpm install
@@ -189,7 +189,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '25'
 
       - name: Setup Node.js & PNPM
         uses: actions/setup-node@v4
@@ -203,7 +203,7 @@ jobs:
         run: |
           pnpm install
           chmod +x ./gradlew || true
-          ./gradlew assembleRelease || ./gradlew assembleDebug
+          ./gradlew :server:android:assembleRelease || ./gradlew :server:android:assembleDebug || ./gradlew assembleDebug -x :server:desktop
 
       - name: Locate & Package APK
         run: |

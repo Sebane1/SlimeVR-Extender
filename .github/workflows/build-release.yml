@@ -77,8 +77,13 @@ jobs:
         shell: bash
         run: |
           set -e
+
           git submodule sync -- bindings-provider/openvr
-          git submodule update --init --force bindings-provider/openvr
+          git submodule update \
+            --init \
+            --force \
+            bindings-provider/openvr
+
           git -C bindings-provider/openvr rev-parse HEAD
 
       - name: Checkout Custom SolarXR Protocol
@@ -125,6 +130,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             build-essential \
             cmake \
@@ -147,7 +153,63 @@ jobs:
         uses: egor-tensin/setup-gcc@v2
         with:
           version: 16
-          platform: x64
+
+      - name: Install Frontend Dependencies
+        run: pnpm install
+
+      - name: Regenerate SolarXR Protocol
+        shell: bash
+        run: |
+          set -e
+
+          cd solarxr-protocol
+
+          if [ -f "./generate-flatbuffer.sh" ]; then
+            chmod +x ./generate-flatbuffer.sh
+            ./generate-flatbuffer.sh
+          elif [ -f "./generate-flatbuffers.sh" ]; then
+            chmod +x ./generate-flatbuffers.sh
+            ./generate-flatbuffers.sh
+          elif [ -f "./generate.sh" ]; then
+            chmod +x ./generate.sh
+            ./generate.sh
+          else
+            echo "No SolarXR FlatBuffers generation script found."
+            echo "Available files:"
+            ls -lah
+            exit 1
+          fi
+
+          cd ..
+
+      - name: Inspect Generated SolarXR Header
+        shell: bash
+        run: |
+          set -e
+
+          HEADER="solarxr-protocol/protocol/cpp/include/solarxr_protocol/generated/all_generated.h"
+
+          echo "SolarXR commit:"
+          git -C solarxr-protocol rev-parse HEAD
+
+          echo ""
+          echo "Generated header:"
+          ls -lh "$HEADER"
+
+          echo ""
+          echo "Checking for merge markers..."
+
+          if grep -nE '^(<<<<<<<|=======|>>>>>>>)' "$HEADER"; then
+            echo ""
+            echo "ERROR: Generated SolarXR C++ header contains conflict markers."
+            exit 1
+          fi
+
+          echo "No conflict markers found."
+
+          echo ""
+          echo "Relevant generated header section:"
+          sed -n '700,950p' "$HEADER"
 
       - name: Setup CMake
         if: matrix.os.platform != 'macos'
@@ -194,9 +256,6 @@ jobs:
           ls -lah server/desktop/build/libs/
           test -f server/desktop/build/libs/slimevr.jar
 
-      - name: Install Frontend Dependencies
-        run: pnpm install
-
       - name: Build GUI
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
@@ -221,7 +280,9 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION=$(git --no-pager tag --sort=-taggerdate --points-at HEAD | head -1)
+          VERSION=$(git --no-pager tag \
+            --sort=-taggerdate \
+            --points-at HEAD | head -1)
 
           if [ -z "$VERSION" ]; then
             VERSION="0.0.0"
@@ -483,6 +544,31 @@ jobs:
 
       - name: Install Frontend Dependencies
         run: pnpm install
+
+      - name: Regenerate SolarXR Protocol
+        shell: bash
+        run: |
+          set -e
+
+          cd solarxr-protocol
+
+          if [ -f "./generate-flatbuffer.sh" ]; then
+            chmod +x ./generate-flatbuffer.sh
+            ./generate-flatbuffer.sh
+          elif [ -f "./generate-flatbuffers.sh" ]; then
+            chmod +x ./generate-flatbuffers.sh
+            ./generate-flatbuffers.sh
+          elif [ -f "./generate.sh" ]; then
+            chmod +x ./generate.sh
+            ./generate.sh
+          else
+            echo "No SolarXR FlatBuffers generation script found."
+            echo "Available files:"
+            ls -lah
+            exit 1
+          fi
+
+          cd ..
 
       - name: Build GUI
         env:

@@ -40,8 +40,20 @@ jobs:
         with:
           repository: Sebane1/SlimeVR-Server
           ref: main-extended
-          submodules: recursive
           fetch-depth: 0
+
+      - name: Checkout Submodules Safely
+        shell: bash
+        run: |
+          git submodule update --init --recursive || {
+            echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
+            git submodule update --init --remote --recursive || true
+          }
+          if [ ! -d "solarxr-protocol/kotlin-codegen" ]; then
+            echo "solarxr-protocol missing, cloning default repository..."
+            rm -rf solarxr-protocol
+            git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -68,7 +80,7 @@ jobs:
 
       - name: Build Shadow JAR
         run: |
-          chmod +x ./gradlew
+          chmod +x ./gradlew || true
           ./gradlew shadowJar
 
       - name: Install Frontend Dependencies
@@ -150,8 +162,20 @@ jobs:
         with:
           repository: Sebane1/SlimeVR-Server
           ref: main-extended
-          submodules: recursive
           fetch-depth: 0
+
+      - name: Checkout Submodules Safely
+        shell: bash
+        run: |
+          git submodule update --init --recursive || {
+            echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
+            git submodule update --init --remote --recursive || true
+          }
+          if [ ! -d "solarxr-protocol/kotlin-codegen" ]; then
+            echo "solarxr-protocol missing, cloning default repository..."
+            rm -rf solarxr-protocol
+            git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
+          fi
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -170,7 +194,7 @@ jobs:
       - name: Build Android APK
         run: |
           pnpm install
-          chmod +x ./gradlew
+          chmod +x ./gradlew || true
           ./gradlew assembleRelease || ./gradlew assembleDebug
 
       - name: Locate & Package APK

@@ -103,6 +103,26 @@ jobs:
             cd dist && zip -r ../slimevr-server-macos.zip ./* && cd ..
           fi
 
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build & Publish SlimeVR-Extender App
+        shell: bash
+        run: |
+          mkdir -p extender-dist
+          if [ "${{ matrix.os.name }}" = "windows" ]; then
+            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r win-x64 -o extender-dist/win-x64
+            cd extender-dist/win-x64 && zip -r ../../slimevr-extender-app-windows-x64.zip ./* && cd ../..
+          elif startsWith("${{ matrix.os.name }}", "linux"); then
+            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r linux-x64 -o extender-dist/linux-x64
+            cd extender-dist/linux-x64 && tar -czvf ../../slimevr-extender-app-linux-x64.tar.gz ./* && cd ../..
+          elif [ "${{ matrix.os.name }}" = "macos" ]; then
+            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r osx-x64 -o extender-dist/osx-x64
+            cd extender-dist/osx-x64 && zip -r ../../slimevr-extender-app-macos.zip ./* && cd ../..
+          fi
+
       - name: Upload Desktop Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -112,6 +132,8 @@ jobs:
             slimevr-server-*.tar.gz
             slimevr-server-*.AppImage
             slimevr-server-*.dmg
+            slimevr-extender-app-*.zip
+            slimevr-extender-app-*.tar.gz
 
   build-android:
     name: Build Android APK

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 
 namespace SlimeVRExtender.Services;
 
@@ -64,7 +65,6 @@ public class ReplacerEngine
             CreateBackup(targetDirectory);
         }
 
-        // Save existing config files to memory before extraction
         var configBackup = new Dictionary<string, byte[]>();
         if (preserveConfig)
         {
@@ -79,7 +79,6 @@ public class ReplacerEngine
             }
         }
 
-        // Extract package
         string tempExtract = Path.Combine(Path.GetTempPath(), "SlimeVR_Extract_" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -91,14 +90,11 @@ public class ReplacerEngine
             }
             else
             {
-                // Fallback for zip/tar extraction
                 ZipFile.ExtractToDirectory(archiveFilePath, tempExtract);
             }
 
-            // Copy extracted files to target directory
             CopyDirectory(tempExtract, targetDirectory);
 
-            // If a nested driver zip was contained within the release, unpack it to driver subfolder if applicable
             string? driverZipInExtract = Directory.GetFiles(tempExtract, "slimevr-openvr-driver-*.zip", SearchOption.AllDirectories).FirstOrDefault();
             if (driverZipInExtract != null)
             {
@@ -107,7 +103,6 @@ public class ReplacerEngine
                 ZipFile.ExtractToDirectory(driverZipInExtract, internalDriverTarget, true);
             }
 
-            // Restore user configuration files
             foreach (var kvp in configBackup)
             {
                 string restoredPath = Path.Combine(targetDirectory, kvp.Key);
@@ -142,7 +137,6 @@ public class ReplacerEngine
             Directory.CreateDirectory(tempExtract);
             ZipFile.ExtractToDirectory(driverZipPath, tempExtract);
 
-            // Copy extracted driver files (bin, resources, driver.vrdrivermanifest) into target folder
             CopyDirectory(tempExtract, driverTargetDirectory);
         }
         finally
@@ -151,6 +145,71 @@ public class ReplacerEngine
             {
                 try { Directory.Delete(tempExtract, true); } catch { }
             }
+        }
+    }
+
+    public async Task SelfUpdateAppAsync(string archiveFilePath)
+    {
+        string currentExePath = Process.GetCurrentProcess().MainModule?.FileName ?? Environment.ProcessPath ?? "";
+        if (string.IsNullOrEmpty(currentExePath))
+            throw new Exception("Could not determine current executable path.");
+
+        string currentDir = Path.GetDirectoryName(currentExePath)!;
+        string tempExtract = Path.Combine(Path.GetTempPath(), "SlimeVRExtender_SelfUpdate_" + Guid.NewGuid().ToString("N"));
+
+        Directory.CreateDirectory(tempExtract);
+        if (archiveFilePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+        {
+            ZipFile.ExtractToDirectory(archiveFilePath, tempExtract);
+        }
+        else
+        {
+            ZipFile.ExtractToDirectory(archiveFilePath, tempExtract);
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            string batchScriptPath = Path.Combine(Path.GetTempPath(), "update_extender.bat");
+            string scriptContent = $@"@echo off
+timeout /t 2 /nobreak > NUL
+xcopy /Y /S /E ""{tempExtract}\*"" ""{currentDir}\""
+start """" ""{currentExePath}""
+del ""%~f0""
+";
+            await File.WriteAllTextAsync(batchScriptPath, scriptContent);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c \"{batchScriptPath}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+
+            Environment.Exit(0);
+        }
+        else
+        {
+            string shScriptPath = Path.Combine(Path.GetTempPath(), "update_extender.sh");
+            string scriptContent = $@"#!/bin/sh
+sleep 2
+cp -r '{tempExtract}'/* '{currentDir}/'
+chmod +x '{currentExePath}'
+'{currentExePath}' &
+rm -- ""$0""
+";
+            await File.WriteAllTextAsync(shScriptPath, scriptContent);
+            Process.Start("chmod", $"+x \"{shScriptPath}\"");
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "/bin/sh",
+                Arguments = $"\"{shScriptPath}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+
+            Environment.Exit(0);
         }
     }
 

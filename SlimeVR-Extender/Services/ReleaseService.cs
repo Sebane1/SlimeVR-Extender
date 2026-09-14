@@ -70,6 +70,12 @@ public class ReleaseService
         return release.assets.FirstOrDefault(a => a.name.ToLower().Contains("driver") || a.name.ToLower() == driverZip);
     }
 
+    public GitHubReleaseAsset? GetMatchingExtenderAppAsset(GitHubRelease release)
+    {
+        string keyword = _platformService.GetReleaseAssetKeyword().ToLower();
+        return release.assets.FirstOrDefault(a => a.name.ToLower().StartsWith("slimevr-extender") && a.name.ToLower().Contains(keyword));
+    }
+
     public async Task<string> DownloadFileAsync(string downloadUrl, string destinationPath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

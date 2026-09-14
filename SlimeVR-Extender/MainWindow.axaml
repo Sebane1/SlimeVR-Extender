@@ -81,6 +81,15 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Self-Update Extender App -->
+                        <Border Background="#0F172A" CornerRadius="8" Padding="12" BorderBrush="#334155" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <CheckBox IsChecked="{Binding UpdateExtenderApp}" Content="Self-Update SlimeVR Extender App" 
+                                          FontWeight="SemiBold" Foreground="#F8FAFC"/>
+                                <TextBlock Text="Automatically replaces this app with the latest version from GitHub Releases." FontSize="11" Foreground="#94A3B8"/>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </Border>
 

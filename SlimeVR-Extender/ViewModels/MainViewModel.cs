@@ -105,6 +105,13 @@ public class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _updateDriver, value);
     }
 
+    private bool _updateExtenderApp = false;
+    public bool UpdateExtenderApp
+    {
+        get => _updateExtenderApp;
+        set => SetField(ref _updateExtenderApp, value);
+    }
+
     private string _statusText = "Ready to fetch latest release.";
     public string StatusText
     {
@@ -278,6 +285,23 @@ public class MainViewModel : INotifyPropertyChanged
                 else
                 {
                     StatusText = "Warning: SteamVR driver path could not be located.";
+                }
+            }
+
+            // Self-Update SlimeVR Extender App
+            if (UpdateExtenderApp)
+            {
+                var extenderAsset = _releaseService.GetMatchingExtenderAppAsset(release);
+                if (extenderAsset != null)
+                {
+                    StatusText = "Downloading SlimeVR Extender update...";
+                    string extenderZipFile = Path.Combine(tempDir, extenderAsset.name);
+                    var progress = new Progress<double>(p => ProgressValue = p);
+                    await _releaseService.DownloadFileAsync(extenderAsset.browser_download_url, extenderZipFile, progress);
+
+                    StatusText = "Relaunching updated SlimeVR Extender...";
+                    await _replacerEngine.SelfUpdateAppAsync(extenderZipFile);
+                    return;
                 }
             }
 

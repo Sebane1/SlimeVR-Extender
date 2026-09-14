@@ -42,6 +42,11 @@ jobs:
           ref: main-extended
           fetch-depth: 0
 
+      - name: Checkout SlimeVR-Extender Repo
+        uses: actions/checkout@v4
+        with:
+          path: SlimeVR-Extender-Repo
+
       - name: Checkout Sebane1 SolarXR-Protocol Submodule
         shell: bash
         run: |
@@ -52,7 +57,7 @@ jobs:
             git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
           }
           mkdir -p solarxr-protocol/kotlin-codegen solarxr-protocol/protocol/kotlin solarxr-protocol/rpc/codegen solarxr-protocol/rpc/kotlin
-          find solarxr-protocol -name "build.gradle.kts" -exec sed -i 's/kotlinOptions\.jvmTarget/\/\/ kotlinOptions\.jvmTarget/g' {} + || true
+          find solarxr-protocol -name "build.gradle.kts" -exec sed -i.bak 's/kotlinOptions\.jvmTarget/\/\/ kotlinOptions\.jvmTarget/g' {} + || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -107,7 +112,7 @@ jobs:
               cp driver/slimevr-openvr-driver-win64.zip dist/
             fi
             cd dist && zip -r ../slimevr-server-${{ matrix.os.name }}.zip ./* && cd ..
-          elif startsWith("${{ matrix.os.name }}", "linux"); then
+          elif [[ "${{ matrix.os.name }}" == linux* ]]; then
             cp target/release/bundle/appimage/*.AppImage dist/SlimeVR-Server-${{ matrix.os.name }}.AppImage || true
             cp server/build/libs/slimevr.jar dist/ || true
             if [ -n "${{ matrix.os.driver_file }}" ] && [ -f "driver/${{ matrix.os.driver_file }}" ]; then
@@ -129,14 +134,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p extender-dist
+          PROJ_PATH="SlimeVR-Extender-Repo/SlimeVR-Extender/SlimeVR-Extender.csproj"
           if [ "${{ matrix.os.name }}" = "windows" ]; then
-            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r win-x64 -o extender-dist/win-x64
+            dotnet publish "$PROJ_PATH" -c Release -r win-x64 -o extender-dist/win-x64
             cd extender-dist/win-x64 && zip -r ../../slimevr-extender-app-windows-x64.zip ./* && cd ../..
-          elif startsWith("${{ matrix.os.name }}", "linux"); then
-            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r linux-x64 -o extender-dist/linux-x64
+          elif [[ "${{ matrix.os.name }}" == linux* ]]; then
+            dotnet publish "$PROJ_PATH" -c Release -r linux-x64 -o extender-dist/linux-x64
             cd extender-dist/linux-x64 && tar -czvf ../../slimevr-extender-app-linux-x64.tar.gz ./* && cd ../..
           elif [ "${{ matrix.os.name }}" = "macos" ]; then
-            dotnet publish SlimeVR-Extender/SlimeVR-Extender.csproj -c Release -r osx-x64 -o extender-dist/osx-x64
+            dotnet publish "$PROJ_PATH" -c Release -r osx-x64 -o extender-dist/osx-x64
             cd extender-dist/osx-x64 && zip -r ../../slimevr-extender-app-macos.zip ./* && cd ../..
           fi
 

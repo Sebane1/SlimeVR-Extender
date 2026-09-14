@@ -42,17 +42,20 @@ jobs:
           ref: main-extended
           fetch-depth: 0
 
-      - name: Checkout Submodules Safely
+      - name: Checkout Submodules Safely & Fix Codegen Paths
         shell: bash
         run: |
           git submodule update --init --recursive || {
             echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
             git submodule update --init --remote --recursive || true
           }
-          if [ ! -d "solarxr-protocol/kotlin-codegen" ]; then
+          if [ ! -d "solarxr-protocol" ]; then
             echo "solarxr-protocol missing, cloning default repository..."
-            rm -rf solarxr-protocol
             git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
+          fi
+          mkdir -p solarxr-protocol/kotlin-codegen
+          if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
+            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
           fi
 
       - name: Setup Java
@@ -164,17 +167,20 @@ jobs:
           ref: main-extended
           fetch-depth: 0
 
-      - name: Checkout Submodules Safely
+      - name: Checkout Submodules Safely & Fix Codegen Paths
         shell: bash
         run: |
           git submodule update --init --recursive || {
             echo "Direct commit checkout failed for submodule, fetching latest remote branch..."
             git submodule update --init --remote --recursive || true
           }
-          if [ ! -d "solarxr-protocol/kotlin-codegen" ]; then
+          if [ ! -d "solarxr-protocol" ]; then
             echo "solarxr-protocol missing, cloning default repository..."
-            rm -rf solarxr-protocol
             git clone https://github.com/SlimeVR/SolarXR-Protocol.git solarxr-protocol
+          fi
+          mkdir -p solarxr-protocol/kotlin-codegen
+          if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
+            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
           fi
 
       - name: Setup Java

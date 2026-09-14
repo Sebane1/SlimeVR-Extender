@@ -52,12 +52,19 @@ jobs:
             git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
           }
           mkdir -p solarxr-protocol/kotlin-codegen solarxr-protocol/protocol/kotlin solarxr-protocol/rpc/codegen solarxr-protocol/rpc/kotlin
-          if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
-            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
-          fi
-          if [ ! -f "solarxr-protocol/protocol/kotlin/build.gradle.kts" ]; then
-            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/protocol/kotlin/build.gradle.kts
-          fi
+          
+          # Patch deprecated kotlinOptions.jvmTarget in build.gradle.kts files
+          python3 -c "
+import glob, os
+for path in glob.glob('solarxr-protocol/**/build.gradle.kts', recursive=True):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        content = content.replace('kotlinOptions.jvmTarget = \"11\"', '// kotlinOptions.jvmTarget = \"11\"')
+        content = content.replace('kotlinOptions.jvmTarget = \"1.8\"', '// kotlinOptions.jvmTarget = \"1.8\"')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+" || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -178,12 +185,19 @@ jobs:
             git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
           }
           mkdir -p solarxr-protocol/kotlin-codegen solarxr-protocol/protocol/kotlin solarxr-protocol/rpc/codegen solarxr-protocol/rpc/kotlin
-          if [ ! -f "solarxr-protocol/kotlin-codegen/build.gradle.kts" ]; then
-            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/kotlin-codegen/build.gradle.kts
-          fi
-          if [ ! -f "solarxr-protocol/protocol/kotlin/build.gradle.kts" ]; then
-            echo 'plugins { kotlin("jvm") }' > solarxr-protocol/protocol/kotlin/build.gradle.kts
-          fi
+          
+          # Patch deprecated kotlinOptions.jvmTarget in build.gradle.kts files
+          python3 -c "
+import glob, os
+for path in glob.glob('solarxr-protocol/**/build.gradle.kts', recursive=True):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        content = content.replace('kotlinOptions.jvmTarget = \"11\"', '// kotlinOptions.jvmTarget = \"11\"')
+        content = content.replace('kotlinOptions.jvmTarget = \"1.8\"', '// kotlinOptions.jvmTarget = \"1.8\"')
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+" || true
 
       - name: Setup Java
         uses: actions/setup-java@v4

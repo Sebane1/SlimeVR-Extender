@@ -21,24 +21,44 @@ jobs:
           - name: windows
             runner: windows-latest
             platform: windows
+            electron_target: win
+            electron_arch: x64
+            bindings_dir: win-x64
+            extender_rid: win-x64
+            extender_archive: slimevr-extender-app-windows-x64.zip
             driver_url: https://nightly.link/SlimeVR/SlimeVR-OpenVR-Driver/workflows/c-cpp/sapphire%2Fsolarxr-external-trackers-rewrite/slimevr-openvr-driver-win64.zip
             driver_file: slimevr-openvr-driver-win64.zip
 
           - name: linux-x64
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
             platform: linux
+            electron_target: linux
+            electron_arch: x64
+            bindings_dir: linux-x64
+            extender_rid: linux-x64
+            extender_archive: slimevr-extender-app-linux-x64.tar.gz
             driver_url: https://nightly.link/SlimeVR/SlimeVR-OpenVR-Driver/workflows/c-cpp/sapphire%2Fsolarxr-external-trackers-rewrite/slimevr-openvr-driver-x64-linux.zip
             driver_file: slimevr-openvr-driver-x64-linux.zip
 
           - name: linux-aarch64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
             platform: linux
+            electron_target: linux
+            electron_arch: arm64
+            bindings_dir: linux-arm64
+            extender_rid: linux-arm64
+            extender_archive: slimevr-extender-app-linux-aarch64.tar.gz
             driver_url: https://nightly.link/SlimeVR/SlimeVR-OpenVR-Driver/workflows/c-cpp/sapphire%2Fsolarxr-external-trackers-rewrite/slimevr-openvr-driver-aarch64-linux.zip
             driver_file: slimevr-openvr-driver-aarch64-linux.zip
 
           - name: macos
             runner: macos-latest
             platform: macos
+            electron_target: mac
+            electron_arch: universal
+            bindings_dir: ""
+            extender_rid: osx-x64
+            extender_archive: slimevr-extender-app-macos.zip
             driver_url: ""
             driver_file: ""
 
@@ -49,29 +69,36 @@ jobs:
           repository: Sebane1/SlimeVR-Server
           ref: main-extended
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
 
       - name: Checkout SlimeVR-Extender Repo
         uses: actions/checkout@v6
         with:
           path: SlimeVR-Extender-Repo
 
-      - name: Checkout Sebane1 SolarXR-Protocol Submodule
+      - name: Checkout OpenVR Submodule
+        if: matrix.os.platform != 'macos'
         shell: bash
         run: |
-          git config submodule.solarxr-protocol.url https://github.com/Sebane1/SolarXR-Protocol.git || true
+          set -e
+          git submodule sync -- bindings-provider/openvr
+          git submodule update --init --force bindings-provider/openvr
+          git -C bindings-provider/openvr rev-parse HEAD
 
-          git submodule update --init --recursive || {
-            echo "Submodule checkout failed, cloning Sebane1/SolarXR-Protocol directly..."
-            rm -rf solarxr-protocol
-            git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
-          }
-
-          mkdir -p \
-            solarxr-protocol/kotlin-codegen \
-            solarxr-protocol/protocol/kotlin \
-            solarxr-protocol/rpc/codegen \
-            solarxr-protocol/rpc/kotlin
+      - name: Checkout Custom SolarXR Protocol
+        shell: bash
+        run: |
+          set -e
+          rm -rf solarxr-protocol
+          git clone \
+            --branch main-extended \
+            --single-branch \
+            https://github.com/Sebane1/SolarXR-Protocol.git \
+            solarxr-protocol
+          git -C solarxr-protocol remote -v
+          git -C solarxr-protocol branch --show-current
+          git -C solarxr-protocol rev-parse HEAD
+          git -C solarxr-protocol log -1 --oneline
 
       - name: Setup Java 25
         uses: actions/setup-java@v5
@@ -92,11 +119,16 @@ jobs:
           cache: pnpm
 
       - name: Install Linux Dependencies
-        if: startsWith(matrix.os.name, 'linux')
+        if: matrix.os.platform == 'linux'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            gcc \
+            g++ \
+            cmake \
+            ninja-build \
             curl \
             wget \
             libssl-dev \
@@ -105,64 +137,74 @@ jobs:
             libnss3-dev \
             libxss1 \
             libxtst6 \
-            xdg-utils \
             libatspi2.0-0 \
             libdrm2 \
-            libgbm1
+            libgbm1 \
+            rpm
 
-      # ------------------------------------------------------------
-      # Build server JAR
-      # ------------------------------------------------------------
+      - name: Setup CMake
+        if: matrix.os.platform != 'macos'
+        uses: lukka/get-cmake@latest
+
+      - name: Configure Bindings Provider
+        if: matrix.os.platform != 'macos'
+        shell: bash
+        run: |
+          set -e
+          cmake \
+            -S bindings-provider \
+            -B "bindings-provider/build/${{ matrix.os.bindings_dir }}" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Bindings Provider
+        if: matrix.os.platform != 'macos'
+        shell: bash
+        run: |
+          set -e
+          cmake \
+            --build "bindings-provider/build/${{ matrix.os.bindings_dir }}" \
+            --config Release \
+            -j 6
 
       - name: Build Desktop Server JAR
         shell: bash
         run: |
+          set -e
           chmod +x ./gradlew || true
           ./gradlew :server:desktop:shadowJar --build-cache
 
       - name: Verify Desktop Server JAR
         shell: bash
         run: |
-          echo "Desktop JAR contents:"
+          set -e
           ls -lah server/desktop/build/libs/
-
           test -f server/desktop/build/libs/slimevr.jar
-
-      # ------------------------------------------------------------
-      # Build GUI
-      # ------------------------------------------------------------
 
       - name: Install Frontend Dependencies
         run: pnpm install
 
-      - name: Build GUI Frontend
+      - name: Build GUI
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm run build
-
-      # ------------------------------------------------------------
-      # Download OpenVR driver
-      # ------------------------------------------------------------
 
       - name: Download Platform OpenVR Driver
         if: matrix.os.driver_url != ''
         shell: bash
         run: |
+          set -e
           mkdir -p driver
-          curl -L \
-            -o "driver/${{ matrix.os.driver_file }}" \
+          curl \
+            --fail \
+            --location \
+            --retry 3 \
+            --output "driver/${{ matrix.os.driver_file }}" \
             "${{ matrix.os.driver_url }}"
 
-      # ------------------------------------------------------------
-      # Package Electron desktop application
-      # ------------------------------------------------------------
-
-      - name: Package Electron Application
+      - name: Determine Version
+        id: version
         shell: bash
         run: |
-          mkdir -p \
-            gui/electron/dist/artifacts/linux \
-            gui/electron/dist/artifacts/win \
-            gui/electron/dist/artifacts/mac
-
           VERSION=$(git --no-pager tag --sort=-taggerdate --points-at HEAD | head -1)
 
           if [ -z "$VERSION" ]; then
@@ -171,156 +213,188 @@ jobs:
 
           VERSION="${VERSION#v}"
 
-          echo "Building Electron package version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          cd gui/electron
-
-          if [ "${{ matrix.os.platform }}" = "windows" ]; then
-            pnpm exec electron-builder \
-              --win \
-              --config.extraMetadata.version="$VERSION" \
-              --publish never
-
-          elif [ "${{ matrix.os.platform }}" = "linux" ]; then
-            pnpm exec electron-builder \
-              --linux \
-              --config.extraMetadata.version="$VERSION" \
-              --publish never
-
-          elif [ "${{ matrix.os.platform }}" = "macos" ]; then
-            pnpm exec electron-builder \
-              --mac \
-              --universal \
-              --config.extraMetadata.version="$VERSION" \
-              --publish never
-          fi
-
-      # ------------------------------------------------------------
-      # Package SlimeVR server artifacts
-      # ------------------------------------------------------------
-
-      - name: Package Desktop Artifacts
+      - name: Prepare Electron Artifact Directories
         shell: bash
         run: |
-          mkdir -p dist
+          mkdir -p \
+            gui/electron/dist/artifacts/linux \
+            gui/electron/dist/artifacts/win \
+            gui/electron/dist/artifacts/mac
 
-          cp server/desktop/build/libs/slimevr.jar dist/slimevr.jar
+      - name: Package Electron - Windows
+        if: matrix.os.platform == 'windows'
+        shell: bash
+        working-directory: gui/electron
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -e
+          pnpm exec electron-builder \
+            --win \
+            --x64 \
+            --config.extraMetadata.version="${{ steps.version.outputs.version }}" \
+            --publish never
 
-          echo "Searching generated Electron artifacts..."
+      - name: Package Electron - Linux
+        if: matrix.os.platform == 'linux'
+        shell: bash
+        working-directory: gui/electron
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -e
+          pnpm exec electron-builder \
+            --linux \
+            --${{ matrix.os.electron_arch }} \
+            --config.extraMetadata.version="${{ steps.version.outputs.version }}" \
+            --publish never
 
-          find gui/electron/dist -maxdepth 5 -type f -print || true
+      - name: Package Electron - macOS
+        if: matrix.os.platform == 'macos'
+        shell: bash
+        working-directory: gui/electron
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: |
+          set -e
+          pnpm exec electron-builder \
+            --mac \
+            --universal \
+            --config.extraMetadata.version="${{ steps.version.outputs.version }}" \
+            --publish never
 
-          if [ "${{ matrix.os.name }}" = "windows" ]; then
-
-            find gui/electron/dist/artifacts/win \
-              -type f \
-              \( -name "*.exe" -o -name "*.zip" \) \
-              -exec cp {} dist/ \; || true
-
-            if [ -f driver/slimevr-openvr-driver-win64.zip ]; then
-              cp driver/slimevr-openvr-driver-win64.zip dist/
-            fi
-
-            cd dist
-            zip -r "../slimevr-server-${{ matrix.os.name }}.zip" ./*
-            cd ..
-
-          elif [[ "${{ matrix.os.name }}" == linux* ]]; then
-
-            find gui/electron/dist/artifacts/linux \
-              -type f \
-              \( -name "*.AppImage" -o -name "*.deb" -o -name "*.tar.gz" -o -name "*.zip" \) \
-              -exec cp {} dist/ \; || true
-
-            if [ -n "${{ matrix.os.driver_file }}" ] && \
-               [ -f "driver/${{ matrix.os.driver_file }}" ]; then
-              cp "driver/${{ matrix.os.driver_file }}" dist/
-            fi
-
-            tar -czvf \
-              "slimevr-server-${{ matrix.os.name }}.tar.gz" \
-              -C dist .
-
-          elif [ "${{ matrix.os.name }}" = "macos" ]; then
-
-            find gui/electron/dist/artifacts/mac \
-              -type f \
-              \( -name "*.dmg" -o -name "*.zip" \) \
-              -exec cp {} dist/ \; || true
-
-            cd dist
-            zip -r ../slimevr-server-macos.zip ./*
-            cd ..
-          fi
-
-      # ------------------------------------------------------------
-      # Build SlimeVR Extender
-      # ------------------------------------------------------------
+      - name: Display Electron Artifacts
+        shell: bash
+        run: |
+          find gui/electron/dist/artifacts \
+            -maxdepth 4 \
+            -type f \
+            -print || true
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Build and Publish SlimeVR-Extender App
+      - name: Build SlimeVR Extender
         shell: bash
         run: |
-          mkdir -p extender-dist
+          set -e
 
           PROJ_PATH="SlimeVR-Extender-Repo/SlimeVR-Extender/SlimeVR-Extender.csproj"
 
-          if [ "${{ matrix.os.name }}" = "windows" ]; then
+          mkdir -p extender-dist
 
-            dotnet publish "$PROJ_PATH" \
-              -c Release \
-              -r win-x64 \
-              --self-contained true \
-              -o extender-dist/win-x64
+          dotnet publish \
+            "$PROJ_PATH" \
+            -c Release \
+            -r "${{ matrix.os.extender_rid }}" \
+            --self-contained true \
+            -o "extender-dist/${{ matrix.os.extender_rid }}"
 
-            cd extender-dist/win-x64
-            zip -r ../../slimevr-extender-app-windows-x64.zip ./*
-            cd ../..
+      - name: Package Extender - Windows
+        if: matrix.os.platform == 'windows'
+        shell: bash
+        run: |
+          set -e
+          cd "extender-dist/${{ matrix.os.extender_rid }}"
+          zip -r "../../${{ matrix.os.extender_archive }}" .
 
-          elif [ "${{ matrix.os.name }}" = "linux-x64" ]; then
+      - name: Package Extender - Linux
+        if: matrix.os.platform == 'linux'
+        shell: bash
+        run: |
+          set -e
+          tar \
+            -czvf "${{ matrix.os.extender_archive }}" \
+            -C "extender-dist/${{ matrix.os.extender_rid }}" \
+            .
 
-            dotnet publish "$PROJ_PATH" \
-              -c Release \
-              -r linux-x64 \
-              --self-contained true \
-              -o extender-dist/linux-x64
+      - name: Package Extender - macOS
+        if: matrix.os.platform == 'macos'
+        shell: bash
+        run: |
+          set -e
+          cd "extender-dist/${{ matrix.os.extender_rid }}"
+          zip -r "../../${{ matrix.os.extender_archive }}" .
 
-            tar -czvf \
-              slimevr-extender-app-linux-x64.tar.gz \
-              -C extender-dist/linux-x64 .
+      - name: Assemble Windows Release
+        if: matrix.os.platform == 'windows'
+        shell: bash
+        run: |
+          set -e
 
-          elif [ "${{ matrix.os.name }}" = "linux-aarch64" ]; then
+          mkdir -p release-package
 
-            dotnet publish "$PROJ_PATH" \
-              -c Release \
-              -r linux-arm64 \
-              --self-contained true \
-              -o extender-dist/linux-arm64
+          find gui/electron/dist/artifacts/win \
+            -maxdepth 1 \
+            -type f \
+            -exec cp {} release-package/ \;
 
-            tar -czvf \
-              slimevr-extender-app-linux-aarch64.tar.gz \
-              -C extender-dist/linux-arm64 .
+          cp \
+            server/desktop/build/libs/slimevr.jar \
+            release-package/slimevr.jar
 
-          elif [ "${{ matrix.os.name }}" = "macos" ]; then
-
-            dotnet publish "$PROJ_PATH" \
-              -c Release \
-              -r osx-x64 \
-              --self-contained true \
-              -o extender-dist/osx-x64
-
-            cd extender-dist/osx-x64
-            zip -r ../../slimevr-extender-app-macos.zip ./*
-            cd ../..
+          if [ -f "driver/${{ matrix.os.driver_file }}" ]; then
+            cp \
+              "driver/${{ matrix.os.driver_file }}" \
+              release-package/
           fi
 
-      # ------------------------------------------------------------
-      # Upload desktop build
-      # ------------------------------------------------------------
+          cd release-package
+          zip -r ../slimevr-server-windows.zip .
+          cd ..
+
+      - name: Assemble Linux Release
+        if: matrix.os.platform == 'linux'
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p release-package
+
+          find gui/electron/dist/artifacts/linux \
+            -maxdepth 1 \
+            -type f \
+            -exec cp {} release-package/ \;
+
+          cp \
+            server/desktop/build/libs/slimevr.jar \
+            release-package/slimevr.jar
+
+          if [ -f "driver/${{ matrix.os.driver_file }}" ]; then
+            cp \
+              "driver/${{ matrix.os.driver_file }}" \
+              release-package/
+          fi
+
+          tar \
+            -czvf "slimevr-server-${{ matrix.os.name }}.tar.gz" \
+            -C release-package \
+            .
+
+      - name: Assemble macOS Release
+        if: matrix.os.platform == 'macos'
+        shell: bash
+        run: |
+          set -e
+
+          mkdir -p release-package
+
+          find gui/electron/dist/artifacts/mac \
+            -maxdepth 1 \
+            -type f \
+            -exec cp {} release-package/ \;
+
+          cp \
+            server/desktop/build/libs/slimevr.jar \
+            release-package/slimevr.jar
+
+          cd release-package
+          zip -r ../slimevr-server-macos.zip .
+          cd ..
 
       - name: Upload Desktop Artifact
         uses: actions/upload-artifact@v7
@@ -333,13 +407,9 @@ jobs:
             slimevr-extender-app-*.zip
             slimevr-extender-app-*.tar.gz
 
-  # =================================================================
-  # Android
-  # =================================================================
-
   build-android:
     name: Build Android APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout SlimeVR-Server Extended
@@ -348,24 +418,22 @@ jobs:
           repository: Sebane1/SlimeVR-Server
           ref: main-extended
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
 
-      - name: Checkout Sebane1 SolarXR-Protocol Submodule
+      - name: Checkout Custom SolarXR Protocol
         shell: bash
         run: |
-          git config submodule.solarxr-protocol.url https://github.com/Sebane1/SolarXR-Protocol.git || true
-
-          git submodule update --init --recursive || {
-            echo "Submodule checkout failed, cloning Sebane1/SolarXR-Protocol directly..."
-            rm -rf solarxr-protocol
-            git clone https://github.com/Sebane1/SolarXR-Protocol.git solarxr-protocol
-          }
-
-          mkdir -p \
-            solarxr-protocol/kotlin-codegen \
-            solarxr-protocol/protocol/kotlin \
-            solarxr-protocol/rpc/codegen \
-            solarxr-protocol/rpc/kotlin
+          set -e
+          rm -rf solarxr-protocol
+          git clone \
+            --branch main-extended \
+            --single-branch \
+            https://github.com/Sebane1/SolarXR-Protocol.git \
+            solarxr-protocol
+          git -C solarxr-protocol remote -v
+          git -C solarxr-protocol branch --show-current
+          git -C solarxr-protocol rev-parse HEAD
+          git -C solarxr-protocol log -1 --oneline
 
       - name: Setup Java 25
         uses: actions/setup-java@v5
@@ -385,42 +453,61 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
 
-      # Android expects the built GUI assets.
       - name: Install Frontend Dependencies
         run: pnpm install
 
-      - name: Build GUI Frontend
+      - name: Build GUI
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm run build
 
       - name: Build Android APK
         shell: bash
+        env:
+          ANDROID_STORE_FILE: ${{ secrets.ANDROID_STORE_FILE }}
+          ANDROID_STORE_PASSWD: ${{ secrets.ANDROID_STORE_PASSWD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWD: ${{ secrets.ANDROID_KEY_PASSWD }}
         run: |
+          set -e
           chmod +x ./gradlew || true
           ./gradlew :server:android:build --build-cache
 
       - name: Locate Android APK
         shell: bash
         run: |
-          echo "Generated APKs:"
-          find server/android/build/outputs -type f -name "*.apk" -print
+          set -e
+          find \
+            server/android/build/outputs \
+            -type f \
+            -name "*.apk" \
+            -print
 
       - name: Package Android APK
         shell: bash
         run: |
+          set -e
+
           mkdir -p dist
+          APK_COUNT=0
 
-          find server/android/build/outputs/apk \
-            -type f \
-            -name "*.apk" \
-            -exec cp {} dist/ \;
+          while IFS= read -r apk; do
+            cp "$apk" dist/
+            APK_COUNT=$((APK_COUNT + 1))
+          done < <(
+            find \
+              server/android/build/outputs/apk \
+              -type f \
+              -name "*.apk"
+          )
 
-          if ! find dist -type f -name "*.apk" | grep -q .; then
-            echo "No APK files were produced."
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK files were generated."
             exit 1
           fi
 
           cd dist
-          zip -r ../slimevr-server-android.zip ./*
+          zip -r ../slimevr-server-android.zip .
           cd ..
 
       - name: Upload Android Artifact
@@ -430,12 +517,9 @@ jobs:
           if-no-files-found: error
           path: slimevr-server-android.zip
 
-  # =================================================================
-  # Release
-  # =================================================================
-
   release:
     name: Create GitHub Release
+
     needs:
       - build-desktop
       - build-android
@@ -460,7 +544,6 @@ jobs:
       - name: Display Downloaded Artifacts
         shell: bash
         run: |
-          echo "Downloaded artifacts:"
           find artifacts -type f -print
 
       - name: Create Release

@@ -56,7 +56,7 @@ public class MainViewModel : INotifyPropertyChanged
         set => SetField(ref _platformName, value);
     }
 
-    private string _repository = "Sebane1/SlimeVR-Server";
+    private string _repository = "Sebane1/SlimeVR-Extender";
     public string Repository
     {
         get => _repository;

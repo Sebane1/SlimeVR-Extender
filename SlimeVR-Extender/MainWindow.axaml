@@ -3,7 +3,7 @@
         xmlns:vm="using:SlimeVRExtender.ViewModels"
         x:Class="SlimeVRExtender.MainWindow"
         x:DataType="vm:MainViewModel"
-        Title="SlimeVR Extended Manager &amp; Replacer"
+        Title="SlimeVR Extender"
         Width="780" Height="580"
         WindowStartupLocation="CenterScreen"
         Background="#0F172A">
@@ -15,8 +15,7 @@
                 BoxShadow="0 4 20 0 #000000">
             <Grid ColumnDefinitions="*, Auto">
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="SlimeVR Extended Manager" FontSize="22" FontWeight="Bold" Foreground="#38BDF8"/>
-                    <TextBlock Text="Cross-Platform Release &amp; SteamVR Driver Replacer" FontSize="13" Foreground="#94A3B8" Margin="0,4,0,0"/>
+                    <TextBlock Text="SlimeVR Extender" FontSize="22" FontWeight="Bold" Foreground="#38BDF8"/>
                 </StackPanel>
                 
                 <!-- Platform Badge -->
@@ -29,19 +28,6 @@
         <!-- Main Configuration & Target Panel -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="16">
-                
-                <!-- GitHub Repository Selector -->
-                <Border Background="#1E293B" CornerRadius="10" Padding="16">
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="GitHub Source Repository" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC"/>
-                        <Grid ColumnDefinitions="*, Auto">
-                            <TextBox Grid.Column="0" Text="{Binding Repository}" Watermark="e.g. Sebane1/SlimeVR-Server" 
-                                     Background="#0F172A" Foreground="#F8FAFC" BorderBrush="#334155" Padding="8,6"/>
-                            <Button Grid.Column="1" Content="Check Release" Command="{Binding FetchLatestCommand}" 
-                                    Margin="8,0,0,0" Background="#3B82F6" Foreground="White" FontWeight="SemiBold" CornerRadius="6"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
 
                 <!-- Installation Target Selections -->
                 <Border Background="#1E293B" CornerRadius="10" Padding="16">

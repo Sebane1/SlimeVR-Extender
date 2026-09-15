@@ -27,23 +27,40 @@ public class PathResolver
                 if (key?.GetValue("SteamPath") is string steamPath &&
                     Directory.Exists(steamPath))
                 {
-                    return steamPath;
+                    return Path.GetFullPath(steamPath);
                 }
             }
             catch
             {
-                // Fall through to normal installation locations.
             }
 
-            string programFilesSteam = Path.Combine(
+            string programFilesX86 =
                 Environment.GetFolderPath(
                     Environment.SpecialFolder.ProgramFilesX86
-                ),
-                "Steam"
-            );
+                );
 
-            if (Directory.Exists(programFilesSteam))
-                return programFilesSteam;
+            if (!string.IsNullOrWhiteSpace(programFilesX86))
+            {
+                string path =
+                    Path.Combine(programFilesX86, "Steam");
+
+                if (Directory.Exists(path))
+                    return path;
+            }
+
+            string programFiles =
+                Environment.GetFolderPath(
+                    Environment.SpecialFolder.ProgramFiles
+                );
+
+            if (!string.IsNullOrWhiteSpace(programFiles))
+            {
+                string path =
+                    Path.Combine(programFiles, "Steam");
+
+                if (Directory.Exists(path))
+                    return path;
+            }
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
@@ -72,15 +89,16 @@ public class PathResolver
                     Environment.SpecialFolder.UserProfile
                 );
 
-            string macSteam = Path.Combine(
-                home,
-                "Library",
-                "Application Support",
-                "Steam"
-            );
+            string path =
+                Path.Combine(
+                    home,
+                    "Library",
+                    "Application Support",
+                    "Steam"
+                );
 
-            if (Directory.Exists(macSteam))
-                return macSteam;
+            if (Directory.Exists(path))
+                return path;
         }
 
         return string.Empty;
@@ -88,65 +106,159 @@ public class PathResolver
 
     public string DetectSteamSlimeVRPath()
     {
-        string steamPath = DetectSteamPath();
-
-        if (string.IsNullOrWhiteSpace(steamPath))
+        if (!OperatingSystem.IsWindows())
             return string.Empty;
 
-        string steamAppPath = Path.Combine(
-            steamPath,
-            "steamapps",
-            "common",
-            "SlimeVR"
-        );
+        var candidates = new List<string>();
 
-        if (IsValidSlimeVRDirectory(steamAppPath))
-            return steamAppPath;
+        string detectedSteam = DetectSteamPath();
 
-        string vdfPath = Path.Combine(
-            steamPath,
-            "steamapps",
-            "libraryfolders.vdf"
-        );
+        if (!string.IsNullOrWhiteSpace(detectedSteam))
+        {
+            AddSteamSlimeVRCandidates(
+                candidates,
+                detectedSteam
+            );
+        }
 
-        if (File.Exists(vdfPath))
+        string programFilesX86 =
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.ProgramFilesX86
+            );
+
+        if (!string.IsNullOrWhiteSpace(programFilesX86))
+        {
+            AddSteamSlimeVRCandidates(
+                candidates,
+                Path.Combine(programFilesX86, "Steam")
+            );
+        }
+
+        string programFiles =
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.ProgramFiles
+            );
+
+        if (!string.IsNullOrWhiteSpace(programFiles))
+        {
+            AddSteamSlimeVRCandidates(
+                candidates,
+                Path.Combine(programFiles, "Steam")
+            );
+        }
+
+        foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
             try
             {
-                foreach (string line in File.ReadAllLines(vdfPath))
+                if (!drive.IsReady ||
+                    drive.DriveType != DriveType.Fixed)
                 {
-                    if (!line.Contains(
-                            "\"path\"",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
+                    continue;
+                }
+
+                string[] possibleSteamRoots =
+                [
+                    Path.Combine(
+                        drive.RootDirectory.FullName,
+                        "SteamLibrary"
+                    ),
+                    Path.Combine(
+                        drive.RootDirectory.FullName,
+                        "Steam"
+                    )
+                ];
+
+                foreach (string steamRoot in possibleSteamRoots)
+                {
+                    if (!Directory.Exists(steamRoot))
                         continue;
-                    }
 
-                    string[] parts = line.Split('"');
-
-                    if (parts.Length < 4)
-                        continue;
-
-                    string libraryFolder =
-                        parts[3].Replace(@"\\", @"\");
-
-                    string candidate = Path.Combine(
-                        libraryFolder,
-                        "steamapps",
-                        "common",
-                        "SlimeVR"
+                    AddSteamSlimeVRCandidates(
+                        candidates,
+                        steamRoot
                     );
-
-                    if (IsValidSlimeVRDirectory(candidate))
-                        return candidate;
                 }
             }
             catch
             {
-                // A malformed VDF should not result in an invented path.
             }
         }
+
+        foreach (string candidate in candidates.Distinct(
+                     StringComparer.OrdinalIgnoreCase))
+        {
+            if (IsValidSteamSlimeVRDirectory(candidate))
+                return Path.GetFullPath(candidate);
+        }
+
         return string.Empty;
+    }
+
+    private static void AddSteamSlimeVRCandidates(
+        ICollection<string> candidates,
+        string steamRoot)
+    {
+        if (string.IsNullOrWhiteSpace(steamRoot))
+            return;
+
+        candidates.Add(
+            Path.Combine(
+                steamRoot,
+                "steamapps",
+                "common",
+                "SlimeVR"
+            )
+        );
+
+        candidates.Add(
+            Path.Combine(
+                steamRoot,
+                "steamapps",
+                "common",
+                "SlimeVR Server"
+            )
+        );
+    }
+
+    private static bool IsValidSteamSlimeVRDirectory(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            !Directory.Exists(path))
+        {
+            return false;
+        }
+
+        string applicationDirectory =
+            Path.Combine(
+                path,
+                "x64",
+                "SlimeVR"
+            );
+
+        return
+            Directory.Exists(applicationDirectory) &&
+            (
+                File.Exists(
+                    Path.Combine(
+                        applicationDirectory,
+                        "SlimeVR.exe"
+                    )
+                ) ||
+                File.Exists(
+                    Path.Combine(
+                        applicationDirectory,
+                        "slimevr.exe"
+                    )
+                )
+            ) &&
+            File.Exists(
+                Path.Combine(
+                    applicationDirectory,
+                    "slimevr.jar"
+                )
+            );
     }
 
     public string DetectStandaloneSlimeVRPath()
@@ -170,7 +282,6 @@ public class PathResolver
                     Environment.SpecialFolder.LocalApplicationData
                 );
 
-            // Current Windows installer name.
             AddCandidate(
                 candidates,
                 programFiles,
@@ -190,7 +301,6 @@ public class PathResolver
                 "SlimeVR Server"
             );
 
-            // Older / alternate installs.
             AddCandidate(
                 candidates,
                 programFiles,
@@ -212,8 +322,8 @@ public class PathResolver
 
             foreach (string candidate in candidates)
             {
-                if (IsValidSlimeVRDirectory(candidate))
-                    return candidate;
+                if (IsValidStandaloneSlimeVRDirectory(candidate))
+                    return Path.GetFullPath(candidate);
             }
 
             return string.Empty;
@@ -248,7 +358,8 @@ public class PathResolver
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            const string candidate = "/Applications/SlimeVR.app";
+            const string candidate =
+                "/Applications/SlimeVR.app";
 
             return Directory.Exists(candidate)
                 ? candidate
@@ -258,69 +369,60 @@ public class PathResolver
         return string.Empty;
     }
 
+    private static bool IsValidStandaloneSlimeVRDirectory(
+        string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) ||
+            !Directory.Exists(path))
+        {
+            return false;
+        }
+
+        return
+            File.Exists(
+                Path.Combine(path, "slimevr.exe")
+            ) ||
+            File.Exists(
+                Path.Combine(path, "SlimeVR.exe")
+            ) ||
+            File.Exists(
+                Path.Combine(path, "slimevr.jar")
+            ) ||
+            File.Exists(
+                Path.Combine(
+                    path,
+                    "resources",
+                    "slimevr.jar"
+                )
+            );
+    }
+
     public string DetectSteamVRDriverPath()
     {
-        string vrPathFile = GetOpenVRPathsFile();
-
-        if (File.Exists(vrPathFile))
-        {
-            try
-            {
-                string content =
-                    File.ReadAllText(vrPathFile);
-
-                using var doc =
-                    JsonDocument.Parse(content);
-
-                if (doc.RootElement.TryGetProperty(
-                        "external_drivers",
-                        out var driversElem) &&
-                    driversElem.ValueKind ==
-                    JsonValueKind.Array)
-                {
-                    foreach (
-                        var elem in driversElem.EnumerateArray())
-                    {
-                        string path =
-                            elem.GetString() ?? string.Empty;
-
-                        if ((path.EndsWith(
-                                 "slimevr",
-                                 StringComparison.OrdinalIgnoreCase) ||
-                             path.EndsWith(
-                                 "driver_slimevr",
-                                 StringComparison.OrdinalIgnoreCase)) &&
-                            Directory.Exists(path))
-                        {
-                            return path;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // Fall through to SteamVR's normal driver path.
-            }
-        }
+        if (!OperatingSystem.IsWindows())
+            return string.Empty;
 
         string steamPath = DetectSteamPath();
 
-        if (!string.IsNullOrEmpty(steamPath))
-        {
-            string candidate = Path.Combine(
+        if (string.IsNullOrWhiteSpace(steamPath))
+            return string.Empty;
+
+        string steamVrPath =
+            Path.Combine(
                 steamPath,
                 "steamapps",
                 "common",
-                "SteamVR",
-                "drivers",
-                "slimevr"
+                "SteamVR"
             );
 
-            if (Directory.Exists(candidate))
-                return candidate;
-        }
+        if (!Directory.Exists(steamVrPath))
+            return string.Empty;
 
-        return string.Empty;
+        return Path.Combine(
+            steamVrPath,
+            "drivers",
+            "slimevr"
+        );
     }
 
     public bool IsValidSlimeVRDirectory(string? path)
@@ -333,12 +435,23 @@ public class PathResolver
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Current Electron SlimeVR installation.
-            if (File.Exists(Path.Combine(path, "slimevr.exe")))
+            if (File.Exists(
+                    Path.Combine(path, "slimevr.exe")))
+            {
                 return true;
+            }
 
-            if (File.Exists(Path.Combine(path, "slimevr.jar")))
+            if (File.Exists(
+                    Path.Combine(path, "SlimeVR.exe")))
+            {
                 return true;
+            }
+
+            if (File.Exists(
+                    Path.Combine(path, "slimevr.jar")))
+            {
+                return true;
+            }
 
             if (File.Exists(
                     Path.Combine(
@@ -349,7 +462,32 @@ public class PathResolver
                 return true;
             }
 
-            return false;
+            string steamApplication =
+                Path.Combine(
+                    path,
+                    "x64",
+                    "SlimeVR"
+                );
+
+            return
+                File.Exists(
+                    Path.Combine(
+                        steamApplication,
+                        "SlimeVR.exe"
+                    )
+                ) ||
+                File.Exists(
+                    Path.Combine(
+                        steamApplication,
+                        "slimevr.exe"
+                    )
+                ) ||
+                File.Exists(
+                    Path.Combine(
+                        steamApplication,
+                        "slimevr.jar"
+                    )
+                );
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -362,11 +500,20 @@ public class PathResolver
             }
         }
 
-        // Linux/package layouts.
-        return File.Exists(Path.Combine(path, "slimevr")) ||
-               File.Exists(Path.Combine(path, "slimevr.jar")) ||
-               File.Exists(
-                   Path.Combine(path, "resources", "slimevr.jar"));
+        return
+            File.Exists(
+                Path.Combine(path, "slimevr")
+            ) ||
+            File.Exists(
+                Path.Combine(path, "slimevr.jar")
+            ) ||
+            File.Exists(
+                Path.Combine(
+                    path,
+                    "resources",
+                    "slimevr.jar"
+                )
+            );
     }
 
     private static void AddCandidate(
@@ -379,7 +526,8 @@ public class PathResolver
             return;
         }
 
-        string candidate = Path.Combine(parts);
+        string candidate =
+            Path.Combine(parts);
 
         if (!candidates.Contains(
                 candidate,

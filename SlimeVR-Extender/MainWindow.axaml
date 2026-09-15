@@ -4,96 +4,235 @@
         x:Class="SlimeVRExtender.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="SlimeVR Extender"
-        Width="780" Height="580"
+        Width="780"
+        Height="580"
         WindowStartupLocation="CenterScreen"
         Background="#0F172A">
 
-    <Grid RowDefinitions="Auto, *, Auto" Margin="24">
-        
-        <!-- Header Banner -->
-        <Border Grid.Row="0" Background="#1E293B" CornerRadius="12" Padding="20" Margin="0,0,0,16"
+	<Grid RowDefinitions="Auto, *, Auto"
+          Margin="24">
+
+		<!-- Header -->
+		<Border Grid.Row="0"
+                Background="#1E293B"
+                CornerRadius="12"
+                Padding="20"
+                Margin="0,0,0,16"
                 BoxShadow="0 4 20 0 #000000">
-            <Grid ColumnDefinitions="*, Auto">
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="SlimeVR Extender" FontSize="22" FontWeight="Bold" Foreground="#38BDF8"/>
-                </StackPanel>
-                
-                <!-- Platform Badge -->
-                <Border Grid.Column="1" Background="#0EA5E9" Padding="12,6" CornerRadius="20" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding PlatformName}" FontWeight="SemiBold" Foreground="White" FontSize="12"/>
-                </Border>
-            </Grid>
-        </Border>
 
-        <!-- Main Configuration & Target Panel -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="16">
+			<Grid ColumnDefinitions="*, Auto">
 
-                <!-- Installation Target Selections -->
-                <Border Background="#1E293B" CornerRadius="10" Padding="16">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Components to Update / Replace" FontSize="14" FontWeight="SemiBold" Foreground="#F8FAFC"/>
+				<StackPanel Grid.Column="0">
+					<TextBlock Text="SlimeVR Extender"
+                               FontSize="22"
+                               FontWeight="Bold"
+                               Foreground="#38BDF8"/>
+				</StackPanel>
 
-                        <!-- Standalone Release Target -->
-                        <Border Background="#0F172A" CornerRadius="8" Padding="12" BorderBrush="#334155" BorderThickness="1">
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding UpdateStandalone}" Content="Replace Standalone Desktop Installation" 
-                                          FontWeight="SemiBold" Foreground="#F8FAFC"/>
-                                <TextBlock Text="Target Directory:" FontSize="11" Foreground="#94A3B8"/>
-                                <TextBox Text="{Binding StandalonePath}" Watermark="Path to Standalone SlimeVR directory" 
-                                         Background="#1E293B" Foreground="#CBD5E1" BorderBrush="#475569"/>
-                            </StackPanel>
-                        </Border>
+				<Border Grid.Column="1"
+                        Background="#0EA5E9"
+                        Padding="12,6"
+                        CornerRadius="20"
+                        VerticalAlignment="Center">
 
-                        <!-- Steam Release Target -->
-                        <Border Background="#0F172A" CornerRadius="8" Padding="12" BorderBrush="#334155" BorderThickness="1">
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding UpdateSteam}" Content="Replace Steam SlimeVR Installation" 
-                                          FontWeight="SemiBold" Foreground="#F8FAFC"/>
-                                <TextBlock Text="Target Directory:" FontSize="11" Foreground="#94A3B8"/>
-                                <TextBox Text="{Binding SteamPath}" Watermark="Path to steamapps/common/SlimeVR" 
-                                         Background="#1E293B" Foreground="#CBD5E1" BorderBrush="#475569"/>
-                            </StackPanel>
-                        </Border>
+					<TextBlock Text="{Binding PlatformName}"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               FontSize="12"/>
 
-                        <!-- SteamVR OpenVR Driver Target -->
-                        <Border Background="#0F172A" CornerRadius="8" Padding="12" BorderBrush="#334155" BorderThickness="1">
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding UpdateDriver}" Content="Replace SteamVR SlimeVR Driver" 
-                                          FontWeight="SemiBold" Foreground="#F8FAFC"/>
-                                <TextBlock Text="SteamVR Driver Directory:" FontSize="11" Foreground="#94A3B8"/>
-                                <TextBox Text="{Binding DriverPath}" Watermark="Path to SteamVR/drivers/slimevr" 
-                                         Background="#1E293B" Foreground="#CBD5E1" BorderBrush="#475569"/>
-                            </StackPanel>
-                        </Border>
+				</Border>
 
-                        <!-- Self-Update Extender App -->
-                        <Border Background="#0F172A" CornerRadius="8" Padding="12" BorderBrush="#334155" BorderThickness="1">
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding UpdateExtenderApp}" Content="Self-Update SlimeVR Extender App" 
-                                          FontWeight="SemiBold" Foreground="#F8FAFC"/>
-                                <TextBlock Text="Automatically replaces this app with the latest version from GitHub Releases." FontSize="11" Foreground="#94A3B8"/>
-                            </StackPanel>
-                        </Border>
+			</Grid>
 
-                    </StackPanel>
-                </Border>
+		</Border>
 
-            </StackPanel>
-        </ScrollViewer>
+		<!-- Configuration -->
+		<ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto">
 
-        <!-- Progress & Action Footer -->
-        <Border Grid.Row="2" Background="#1E293B" CornerRadius="10" Padding="16" Margin="0,16,0,0">
-            <StackPanel Spacing="10">
-                <TextBlock Text="{Binding StatusText}" Foreground="#E2E8F0" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"/>
-                <ProgressBar Value="{Binding ProgressValue}" Maximum="100" Height="8" CornerRadius="4" 
-                             Foreground="#10B981" Background="#0F172A"/>
-                
-                <Button Content="DOWNLOAD &amp; REPLACE FILES" Command="{Binding UpdateCommand}" 
-                        IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Center" Padding="24,10" 
-                        Background="#10B981" Foreground="White" FontWeight="Bold" FontSize="14" CornerRadius="8"/>
-            </StackPanel>
-        </Border>
+			<StackPanel Spacing="16">
 
-    </Grid>
+				<!-- Installation Target -->
+				<Border Background="#1E293B"
+                        CornerRadius="10"
+                        Padding="16">
+
+					<StackPanel Spacing="12">
+
+						<TextBlock Text="Installation Target"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F8FAFC"/>
+
+						<!-- Target Type -->
+						<Border Background="#0F172A"
+                                CornerRadius="8"
+                                Padding="12"
+                                BorderBrush="#334155"
+                                BorderThickness="1">
+
+							<StackPanel Spacing="6">
+
+								<TextBlock Text="SlimeVR Installation:"
+                                           FontSize="11"
+                                           Foreground="#94A3B8"/>
+
+								<ComboBox ItemsSource="{Binding InstallationTypes}"
+                                          SelectedItem="{Binding SelectedInstallationType}"
+                                          HorizontalAlignment="Stretch"
+                                          Background="#1E293B"
+                                          Foreground="#F8FAFC"
+                                          BorderBrush="#475569"/>
+
+							</StackPanel>
+
+						</Border>
+
+						<!-- Standalone -->
+						<Border Background="#0F172A"
+                                CornerRadius="8"
+                                Padding="12"
+                                BorderBrush="#334155"
+                                BorderThickness="1"
+                                IsVisible="{Binding IsStandalone}">
+
+							<StackPanel Spacing="6">
+
+								<TextBlock Text="Standalone SlimeVR Directory:"
+                                           FontSize="11"
+                                           Foreground="#94A3B8"/>
+
+								<TextBox Text="{Binding StandalonePath}"
+                                         Watermark="Path to Standalone SlimeVR directory"
+                                         Background="#1E293B"
+                                         Foreground="#CBD5E1"
+                                         BorderBrush="#475569"/>
+
+							</StackPanel>
+
+						</Border>
+
+						<!-- Steam -->
+						<Border Background="#0F172A"
+                                CornerRadius="8"
+                                Padding="12"
+                                BorderBrush="#334155"
+                                BorderThickness="1"
+                                IsVisible="{Binding IsSteam}">
+
+							<StackPanel Spacing="6">
+
+								<TextBlock Text="Steam SlimeVR Directory:"
+                                           FontSize="11"
+                                           Foreground="#94A3B8"/>
+
+								<TextBox Text="{Binding SteamPath}"
+                                         Watermark="Path to steamapps/common/SlimeVR"
+                                         Background="#1E293B"
+                                         Foreground="#CBD5E1"
+                                         BorderBrush="#475569"/>
+
+							</StackPanel>
+
+						</Border>
+
+						<!-- Driver -->
+						<Border Background="#0F172A"
+                                CornerRadius="8"
+                                Padding="12"
+                                BorderBrush="#334155"
+                                BorderThickness="1">
+
+							<StackPanel Spacing="6">
+
+								<CheckBox IsChecked="{Binding UpdateDriver}"
+                                          Content="Replace SlimeVR OpenVR Driver"
+                                          FontWeight="SemiBold"
+                                          Foreground="#F8FAFC"/>
+
+								<TextBlock Text="Driver Directory:"
+                                           FontSize="11"
+                                           Foreground="#94A3B8"/>
+
+								<TextBox Text="{Binding DriverPath}"
+                                         Watermark="SlimeVR OpenVR driver path"
+                                         IsEnabled="{Binding UpdateDriver}"
+                                         Background="#1E293B"
+                                         Foreground="#CBD5E1"
+                                         BorderBrush="#475569"/>
+
+							</StackPanel>
+
+						</Border>
+
+						<!-- Extender Self Update -->
+						<Border Background="#0F172A"
+                                CornerRadius="8"
+                                Padding="12"
+                                BorderBrush="#334155"
+                                BorderThickness="1">
+
+							<StackPanel Spacing="6">
+
+								<CheckBox IsChecked="{Binding UpdateExtenderApp}"
+                                          Content="Self-Update SlimeVR Extender App"
+                                          FontWeight="SemiBold"
+                                          Foreground="#F8FAFC"/>
+
+								<TextBlock Text="Automatically replaces this app with the latest version from GitHub Releases."
+                                           FontSize="11"
+                                           Foreground="#94A3B8"
+                                           TextWrapping="Wrap"/>
+
+							</StackPanel>
+
+						</Border>
+
+					</StackPanel>
+
+				</Border>
+
+			</StackPanel>
+
+		</ScrollViewer>
+
+		<!-- Footer -->
+		<Border Grid.Row="2"
+                Background="#1E293B"
+                CornerRadius="10"
+                Padding="16"
+                Margin="0,16,0,0">
+
+			<StackPanel Spacing="10">
+
+				<TextBlock Text="{Binding StatusText}"
+                           Foreground="#E2E8F0"
+                           FontSize="13"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"/>
+
+				<ProgressBar Value="{Binding ProgressValue}"
+                             Maximum="100"
+                             Height="8"
+                             CornerRadius="4"
+                             Foreground="#10B981"
+                             Background="#0F172A"/>
+
+				<Button Content="DOWNLOAD &amp; REPLACE FILES"
+                        Command="{Binding UpdateCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        HorizontalAlignment="Center"
+                        Padding="24,10"
+                        Background="#10B981"
+                        Foreground="White"
+                        FontWeight="Bold"
+                        FontSize="14"
+                        CornerRadius="8"/>
+
+			</StackPanel>
+
+		</Border>
+
+	</Grid>
+
 </Window>

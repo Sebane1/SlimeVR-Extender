@@ -14,6 +14,7 @@ public class ReplacerEngine
         _platformService = platformService;
     }
 
+
     public void StopRunningProcesses()
     {
         string[] targetProcessNames =
@@ -36,7 +37,7 @@ public class ReplacerEngine
                     }
                     catch
                     {
-                        // Ignore processes that cannot be terminated.
+                        // Ignore processes we cannot terminate.
                     }
                     finally
                     {
@@ -46,7 +47,7 @@ public class ReplacerEngine
             }
             catch
             {
-                // Ignore process enumeration errors.
+                // Ignore process enumeration failures.
             }
         }
     }
@@ -61,6 +62,8 @@ public class ReplacerEngine
             );
         }
 
+        targetDirectory = Path.GetFullPath(targetDirectory);
+
         if (!Directory.Exists(targetDirectory))
         {
             throw new DirectoryNotFoundException(
@@ -68,15 +71,25 @@ public class ReplacerEngine
             );
         }
 
-        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string timestamp =
+            DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
         string backupDirectory =
             $"{targetDirectory}_backup_{timestamp}";
 
-        int copiedFiles = CopyDirectoryWithCount(
-            targetDirectory,
-            backupDirectory
-        );
+        // Avoid a collision if two backups somehow happen
+        // within the same second.
+        if (Directory.Exists(backupDirectory))
+        {
+            backupDirectory =
+                $"{targetDirectory}_backup_{timestamp}_{Guid.NewGuid():N}";
+        }
+
+        int copiedFiles =
+            CopyDirectoryWithCount(
+                targetDirectory,
+                backupDirectory
+            );
 
         if (copiedFiles == 0)
         {
@@ -88,6 +101,7 @@ public class ReplacerEngine
         return backupDirectory;
     }
 
+    
     public async Task ReplaceReleaseFilesAsync(
         string archiveFilePath,
         string targetDirectory,
@@ -96,37 +110,25 @@ public class ReplacerEngine
         string? driverTargetDirectory = null,
         bool installEmbeddedDriver = false)
     {
-        if (string.IsNullOrWhiteSpace(archiveFilePath))
-        {
-            throw new ArgumentException(
-                "Release archive path cannot be empty.",
-                nameof(archiveFilePath)
-            );
-        }
-
-        archiveFilePath = Path.GetFullPath(archiveFilePath);
-
-        if (!File.Exists(archiveFilePath))
-        {
-            throw new FileNotFoundException(
-                "Release archive does not exist.",
-                archiveFilePath
-            );
-        }
+        ValidateArchive(archiveFilePath);
 
         if (string.IsNullOrWhiteSpace(targetDirectory))
         {
             throw new DirectoryNotFoundException(
-                "No SlimeVR installation directory was provided."
+                "No standalone SlimeVR installation directory was provided."
             );
         }
 
-        targetDirectory = Path.GetFullPath(targetDirectory);
+        archiveFilePath =
+            Path.GetFullPath(archiveFilePath);
+
+        targetDirectory =
+            Path.GetFullPath(targetDirectory);
 
         if (!Directory.Exists(targetDirectory))
         {
             throw new DirectoryNotFoundException(
-                $"SlimeVR installation does not exist: {targetDirectory}"
+                $"Standalone SlimeVR installation does not exist: {targetDirectory}"
             );
         }
 
@@ -134,15 +136,16 @@ public class ReplacerEngine
 
         StopRunningProcesses();
 
-        progress?.Report("Creating SlimeVR backup...");
+        progress?.Report(
+            "Creating standalone SlimeVR backup..."
+        );
 
         string backupDirectory =
             CreateBackup(targetDirectory);
 
         progress?.Report(
-            $"Backup created:\n{backupDirectory}"
+            $"Backup created: {backupDirectory}"
         );
-
 
         Dictionary<string, byte[]> configBackup =
             new(StringComparer.OrdinalIgnoreCase);
@@ -153,43 +156,23 @@ public class ReplacerEngine
                 "Preserving SlimeVR configuration..."
             );
 
-            string[] configFiles =
-            [
-                "slimevr.config.json",
-                "slimevr.settings.json",
-                "config.json"
-            ];
-
-            foreach (string configFile in configFiles)
-            {
-                string path =
-                    Path.Combine(
-                        targetDirectory,
-                        configFile
-                    );
-
-                if (File.Exists(path))
-                {
-                    configBackup[configFile] =
-                        await File.ReadAllBytesAsync(path);
-                }
-            }
+            PreserveConfiguration(
+                targetDirectory,
+                configBackup
+            );
         }
-        string tempExtract = Path.Combine(
-            Path.GetTempPath(),
-            "SlimeVR_Extract_" +
-            Guid.NewGuid().ToString("N")
-        );
+
+        string tempExtract =
+            CreateTemporaryDirectory(
+                "SlimeVR_Extract_"
+            );
 
         bool successful = false;
 
         try
         {
-            Directory.CreateDirectory(tempExtract);
-
             progress?.Report(
-                $"Extracting release bundle:\n" +
-                $"{Path.GetFileName(archiveFilePath)}"
+                $"Extracting release bundle: {Path.GetFileName(archiveFilePath)}"
             );
 
             await ExtractArchiveAsync(
@@ -217,7 +200,7 @@ public class ReplacerEngine
 
             if (OperatingSystem.IsWindows())
             {
-                await InstallWindowsBundleAsync(
+                await InstallStandaloneWindowsBundleAsync(
                     outerFiles,
                     tempExtract,
                     targetDirectory,
@@ -228,10 +211,10 @@ public class ReplacerEngine
             }
             else
             {
-                // Linux/macOS packages may already contain the actual
-                // application files rather than the nested Windows ZIP.
                 string copyRoot =
-                    GetArchiveContentRoot(tempExtract);
+                    GetArchiveContentRoot(
+                        tempExtract
+                    );
 
                 int copiedFiles =
                     CopyDirectoryWithCount(
@@ -242,7 +225,7 @@ public class ReplacerEngine
                 if (copiedFiles == 0)
                 {
                     throw new IOException(
-                        "No SlimeVR files were installed."
+                        "No standalone SlimeVR files were installed."
                     );
                 }
 
@@ -257,19 +240,10 @@ public class ReplacerEngine
                     "Restoring SlimeVR configuration..."
                 );
 
-                foreach (var entry in configBackup)
-                {
-                    string destination =
-                        Path.Combine(
-                            targetDirectory,
-                            entry.Key
-                        );
-
-                    await File.WriteAllBytesAsync(
-                        destination,
-                        entry.Value
-                    );
-                }
+                await RestoreConfigurationAsync(
+                    targetDirectory,
+                    configBackup
+                );
             }
 
             if (OperatingSystem.IsWindows())
@@ -283,8 +257,7 @@ public class ReplacerEngine
                 if (!File.Exists(installedExe))
                 {
                     throw new IOException(
-                        "Update completed, but slimevr.exe was not found " +
-                        $"in the installation directory:\n{installedExe}"
+                        $"Standalone update completed but slimevr.exe was not found: {installedExe}"
                     );
                 }
             }
@@ -292,18 +265,17 @@ public class ReplacerEngine
             successful = true;
 
             progress?.Report(
-                "SlimeVR replacement completed successfully."
+                "Standalone SlimeVR replacement completed successfully."
             );
         }
         catch (Exception ex)
         {
             progress?.Report(
-                $"Update failed. Temporary extraction has been preserved:\n" +
-                $"{tempExtract}"
+                $"Update failed. Temporary extraction preserved at: {tempExtract}"
             );
 
             throw new Exception(
-                "SlimeVR replacement failed.\n\n" +
+                "Standalone SlimeVR replacement failed.\n\n" +
                 $"Archive: {archiveFilePath}\n" +
                 $"Target: {targetDirectory}\n" +
                 $"Backup: {backupDirectory}\n" +
@@ -314,26 +286,16 @@ public class ReplacerEngine
         }
         finally
         {
-            // Preserve failed extraction directories for debugging.
-            if (successful &&
-                Directory.Exists(tempExtract))
+            if (successful)
             {
-                try
-                {
-                    Directory.Delete(
-                        tempExtract,
-                        true
-                    );
-                }
-                catch
-                {
-                    // Cleanup failure does not invalidate the update.
-                }
+                TryDeleteDirectory(
+                    tempExtract
+                );
             }
         }
     }
 
-    private async Task InstallWindowsBundleAsync(
+    private async Task InstallStandaloneWindowsBundleAsync(
         string[] outerFiles,
         string tempExtract,
         string targetDirectory,
@@ -341,196 +303,95 @@ public class ReplacerEngine
         bool installEmbeddedDriver,
         IProgress<string>? progress)
     {
-
-        string? applicationZip =
-            outerFiles.FirstOrDefault(file =>
-            {
-                string name =
-                    Path.GetFileName(file);
-
-                return
-                    name.StartsWith(
-                        "SlimeVR-win-",
-                        StringComparison.OrdinalIgnoreCase
-                    ) &&
-                    name.EndsWith(
-                        ".zip",
-                        StringComparison.OrdinalIgnoreCase
-                    );
-            });
-
-        // Also support official naming such as SlimeVR-win64.zip.
-        applicationZip ??=
-            outerFiles.FirstOrDefault(file =>
-            {
-                string name =
-                    Path.GetFileName(file);
-
-                return
-                    name.StartsWith(
-                        "SlimeVR-win",
-                        StringComparison.OrdinalIgnoreCase
-                    ) &&
-                    name.EndsWith(
-                        ".zip",
-                        StringComparison.OrdinalIgnoreCase
-                    ) &&
-                    !name.StartsWith(
-                        "slimevr-openvr-driver",
-                        StringComparison.OrdinalIgnoreCase
-                    );
-            });
-
-        if (applicationZip == null)
-        {
-            throw new InvalidDataException(
-                "The Windows release bundle does not contain " +
-                "a SlimeVR-win*.zip application package."
+        string applicationZip =
+            FindWindowsApplicationZip(
+                outerFiles
             );
-        }
+
+        string serverJar =
+            FindServerJar(
+                outerFiles
+            );
+
+        string? embeddedDriverZip =
+            FindDriverZip(
+                outerFiles
+            );
 
         progress?.Report(
-            $"Found SlimeVR application package:\n" +
-            $"{Path.GetFileName(applicationZip)}"
+            $"Found application package: {Path.GetFileName(applicationZip)}"
         );
 
-        string applicationExtractDirectory =
+        string applicationExtract =
             Path.Combine(
                 tempExtract,
-                "SlimeVR_Application"
+                "Standalone_Application"
             );
 
         Directory.CreateDirectory(
-            applicationExtractDirectory
+            applicationExtract
         );
 
         progress?.Report(
-            "Extracting SlimeVR application..."
+            "Extracting standalone application..."
         );
 
         ZipFile.ExtractToDirectory(
             applicationZip,
-            applicationExtractDirectory,
+            applicationExtract,
             overwriteFiles: true
         );
 
-        string applicationRoot =
-            GetArchiveContentRoot(
-                applicationExtractDirectory
+        string applicationSource =
+            FindApplicationRoot(
+                applicationExtract
             );
 
-        string? packagedExe =
-            Directory
-                .GetFiles(
-                    applicationRoot,
-                    "slimevr.exe",
-                    SearchOption.AllDirectories
-                )
-                .FirstOrDefault();
-
-        if (packagedExe == null)
-        {
-            throw new InvalidDataException(
-                $"The application archive '{Path.GetFileName(applicationZip)}' " +
-                "does not contain slimevr.exe."
+        string packagedExe =
+            Path.Combine(
+                applicationSource,
+                "slimevr.exe"
             );
-        }
-
-        applicationRoot =
-            Path.GetDirectoryName(packagedExe)
-            ?? applicationRoot;
-
-        string[] applicationFiles =
-            Directory.GetFiles(
-                applicationRoot,
-                "*",
-                SearchOption.AllDirectories
-            );
-
-        if (applicationFiles.Length == 0)
-        {
-            throw new InvalidDataException(
-                "The SlimeVR application package extracted zero files."
-            );
-        }
-
-        progress?.Report(
-            $"Application package contains " +
-            $"{applicationFiles.Length} files."
-        );
 
         int copiedApplicationFiles =
             CopyDirectoryWithCount(
-                applicationRoot,
+                applicationSource,
                 targetDirectory
             );
 
         if (copiedApplicationFiles == 0)
         {
             throw new IOException(
-                "Zero SlimeVR application files were installed."
+                "Zero standalone application files were installed."
             );
         }
 
         progress?.Report(
-            $"Installed {copiedApplicationFiles} application files."
+            $"Installed {copiedApplicationFiles} standalone application files."
         );
 
-        string installedExe =
+        VerifyFileCopy(
+            packagedExe,
             Path.Combine(
                 targetDirectory,
                 "slimevr.exe"
-            );
-
-        if (!File.Exists(installedExe))
-        {
-            throw new IOException(
-                $"slimevr.exe was not installed:\n{installedExe}"
-            );
-        }
-
-        long packagedExeSize =
-            new FileInfo(packagedExe).Length;
-
-        long installedExeSize =
-            new FileInfo(installedExe).Length;
-
-        if (packagedExeSize != installedExeSize)
-        {
-            throw new IOException(
-                "slimevr.exe verification failed.\n\n" +
-                $"Package: {packagedExeSize:N0} bytes\n" +
-                $"Installed: {installedExeSize:N0} bytes"
-            );
-        }
-
-        progress?.Report(
-            "slimevr.exe replacement verified."
+            ),
+            "standalone slimevr.exe"
         );
 
-        string? serverJar =
-            outerFiles.FirstOrDefault(file =>
-                string.Equals(
-                    Path.GetFileName(file),
-                    "slimevr.jar",
-                    StringComparison.OrdinalIgnoreCase
-                )
-            );
+        progress?.Report(
+            "Standalone slimevr.exe replacement verified."
+        );
 
-        if (serverJar == null)
-        {
-            throw new InvalidDataException(
-                "The release bundle does not contain slimevr.jar."
-            );
-        }
-
+        // The outer JAR is our custom server JAR and should win over
+        // anything contained in the application ZIP.
         string jarDestination =
-            FindJarDestination(
+            FindStandaloneJarDestination(
                 targetDirectory
             );
 
         progress?.Report(
-            $"Installing slimevr.jar to:\n{jarDestination}"
+            $"Installing standalone slimevr.jar to: {jarDestination}"
         );
 
         File.Copy(
@@ -539,49 +400,22 @@ public class ReplacerEngine
             overwrite: true
         );
 
-        if (!File.Exists(jarDestination))
-        {
-            throw new IOException(
-                $"slimevr.jar was not installed:\n{jarDestination}"
-            );
-        }
-
-        if (new FileInfo(serverJar).Length !=
-            new FileInfo(jarDestination).Length)
-        {
-            throw new IOException(
-                "slimevr.jar replacement verification failed."
-            );
-        }
-
-        progress?.Report(
-            "slimevr.jar replacement verified."
+        VerifyFileCopy(
+            serverJar,
+            jarDestination,
+            "standalone slimevr.jar"
         );
 
-        string? embeddedDriverZip =
-            outerFiles.FirstOrDefault(file =>
-            {
-                string name =
-                    Path.GetFileName(file);
-
-                return
-                    name.StartsWith(
-                        "slimevr-openvr-driver-",
-                        StringComparison.OrdinalIgnoreCase
-                    ) &&
-                    name.EndsWith(
-                        ".zip",
-                        StringComparison.OrdinalIgnoreCase
-                    );
-            });
+        progress?.Report(
+            "Standalone slimevr.jar replacement verified."
+        );
 
         if (installEmbeddedDriver)
         {
             if (embeddedDriverZip == null)
             {
                 throw new InvalidDataException(
-                    "OpenVR driver installation was requested, " +
-                    "but the release bundle does not contain a driver ZIP."
+                    "Driver installation was requested, but the release bundle does not contain an OpenVR driver ZIP."
                 );
             }
 
@@ -589,14 +423,12 @@ public class ReplacerEngine
                     driverTargetDirectory))
             {
                 throw new DirectoryNotFoundException(
-                    "OpenVR driver installation was requested, " +
-                    "but no SteamVR SlimeVR driver path was provided."
+                    "Driver installation was requested, but no OpenVR driver target directory was provided."
                 );
             }
 
             progress?.Report(
-                $"Installing embedded OpenVR driver:\n" +
-                $"{Path.GetFileName(embeddedDriverZip)}"
+                $"Installing embedded OpenVR driver to: {driverTargetDirectory}"
             );
 
             await ReplaceDriverFilesAsync(
@@ -605,78 +437,389 @@ public class ReplacerEngine
             );
 
             progress?.Report(
-                "OpenVR driver replacement completed."
+                "Embedded OpenVR driver installed."
             );
         }
     }
 
-    private static string FindJarDestination(
-        string targetDirectory)
+    public async Task ReplaceSteamReleaseFilesAsync(
+        string archiveFilePath,
+        string steamRootDirectory,
+        IProgress<string>? progress = null)
     {
-        // First prefer an existing slimevr.jar. This lets us replace
-        // whatever location the installed SlimeVR version already uses.
+        ValidateArchive(
+            archiveFilePath
+        );
 
-        string[] existingJars =
-            Directory.GetFiles(
-                targetDirectory,
-                "slimevr.jar",
-                SearchOption.AllDirectories
-            );
-
-        if (existingJars.Length > 0)
+        if (string.IsNullOrWhiteSpace(
+                steamRootDirectory))
         {
-            // Prefer root-level slimevr.jar if present.
-            string rootJar =
-                Path.Combine(
-                    targetDirectory,
-                    "slimevr.jar"
-                );
-
-            string? exactRootJar =
-                existingJars.FirstOrDefault(path =>
-                    string.Equals(
-                        Path.GetFullPath(path),
-                        Path.GetFullPath(rootJar),
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                );
-
-            if (exactRootJar != null)
-            {
-                return exactRootJar;
-            }
-
-            // Otherwise use the first existing JAR.
-            return existingJars[0];
+            throw new DirectoryNotFoundException(
+                "No Steam SlimeVR installation directory was provided."
+            );
         }
 
-        // No existing JAR. Use installation root.
-        return Path.Combine(
-            targetDirectory,
-            "slimevr.jar"
+        archiveFilePath =
+            Path.GetFullPath(
+                archiveFilePath
+            );
+
+        steamRootDirectory =
+            Path.GetFullPath(
+                steamRootDirectory
+            );
+
+        if (!Directory.Exists(
+                steamRootDirectory))
+        {
+            throw new DirectoryNotFoundException(
+                $"Steam SlimeVR installation does not exist: {steamRootDirectory}"
+            );
+        }
+
+        string applicationTarget =
+            Path.Combine(
+                steamRootDirectory,
+                "x64",
+                "SlimeVR"
+            );
+
+        string executableTarget =
+            Path.Combine(
+                applicationTarget,
+                "slimevr.exe"
+            );
+
+        string jarTarget =
+            Path.Combine(
+                applicationTarget,
+                "slimevr.jar"
+            );
+
+        string driverTarget =
+            Path.Combine(
+                steamRootDirectory,
+                "bin",
+                "win64"
+            );
+
+        if (!Directory.Exists(
+                applicationTarget))
+        {
+            throw new DirectoryNotFoundException(
+                "Steam SlimeVR application directory was not found:\n" +
+                applicationTarget
+            );
+        }
+
+        if (!File.Exists(
+                executableTarget))
+        {
+            throw new FileNotFoundException(
+                "Steam SlimeVR executable was not found.",
+                executableTarget
+            );
+        }
+
+        progress?.Report(
+            "Stopping SlimeVR..."
         );
+
+        StopRunningProcesses();
+
+        progress?.Report(
+            "Creating Steam SlimeVR backup..."
+        );
+
+        string backupDirectory =
+            CreateBackup(
+                steamRootDirectory
+            );
+
+        progress?.Report(
+            $"Steam backup created: {backupDirectory}"
+        );
+
+        string tempExtract =
+            CreateTemporaryDirectory(
+                "SlimeVR_Steam_"
+            );
+
+        bool successful = false;
+
+        try
+        {
+            progress?.Report(
+                $"Extracting release bundle: {Path.GetFileName(archiveFilePath)}"
+            );
+
+            await ExtractArchiveAsync(
+                archiveFilePath,
+                tempExtract
+            );
+
+            string[] outerFiles =
+                Directory.GetFiles(
+                    tempExtract,
+                    "*",
+                    SearchOption.AllDirectories
+                );
+
+            if (outerFiles.Length == 0)
+            {
+                throw new InvalidDataException(
+                    "The release bundle extracted zero files."
+                );
+            }
+
+            progress?.Report(
+                $"Release bundle contains {outerFiles.Length} payload files."
+            );
+
+            string applicationZip =
+                FindWindowsApplicationZip(
+                    outerFiles
+                );
+
+            string serverJar =
+                FindServerJar(
+                    outerFiles
+                );
+
+            string? driverZip =
+                FindDriverZip(
+                    outerFiles
+                );
+
+            progress?.Report(
+                $"Extracting Steam application package: {Path.GetFileName(applicationZip)}"
+            );
+
+            string applicationExtract =
+                Path.Combine(
+                    tempExtract,
+                    "Steam_Application"
+                );
+
+            Directory.CreateDirectory(
+                applicationExtract
+            );
+
+            ZipFile.ExtractToDirectory(
+                applicationZip,
+                applicationExtract,
+                overwriteFiles: true
+            );
+
+            string applicationSource =
+                FindApplicationRoot(
+                    applicationExtract
+                );
+
+            string packagedExe =
+                Path.Combine(
+                    applicationSource,
+                    "slimevr.exe"
+                );
+
+            progress?.Report(
+                $"Installing Steam application to: {applicationTarget}"
+            );
+
+            int copiedApplicationFiles =
+                CopyDirectoryWithCount(
+                    applicationSource,
+                    applicationTarget
+                );
+
+            if (copiedApplicationFiles == 0)
+            {
+                throw new IOException(
+                    "Zero Steam application files were installed."
+                );
+            }
+
+            progress?.Report(
+                $"Installed {copiedApplicationFiles} Steam application files."
+            );
+
+            VerifyFileCopy(
+                packagedExe,
+                executableTarget,
+                "Steam slimevr.exe"
+            );
+
+            progress?.Report(
+                "Steam slimevr.exe replacement verified."
+            );
+
+            progress?.Report(
+                $"Installing Steam slimevr.jar to: {jarTarget}"
+            );
+
+            File.Copy(
+                serverJar,
+                jarTarget,
+                overwrite: true
+            );
+
+            VerifyFileCopy(
+                serverJar,
+                jarTarget,
+                "Steam slimevr.jar"
+            );
+
+            progress?.Report(
+                "Steam slimevr.jar replacement verified."
+            );
+
+            if (driverZip != null)
+            {
+                progress?.Report(
+                    "Extracting Steam OpenVR driver..."
+                );
+
+                string driverExtract =
+                    Path.Combine(
+                        tempExtract,
+                        "Steam_Driver"
+                    );
+
+                Directory.CreateDirectory(
+                    driverExtract
+                );
+
+                ZipFile.ExtractToDirectory(
+                    driverZip,
+                    driverExtract,
+                    overwriteFiles: true
+                );
+
+                string? packagedDriverDll =
+                    Directory
+                        .GetFiles(
+                            driverExtract,
+                            "driver_slimevr.dll",
+                            SearchOption.AllDirectories
+                        )
+                        .FirstOrDefault();
+
+                if (packagedDriverDll == null)
+                {
+                    throw new InvalidDataException(
+                        "The OpenVR driver package does not contain driver_slimevr.dll."
+                    );
+                }
+
+                Directory.CreateDirectory(
+                    driverTarget
+                );
+
+                string installedDriverDll =
+                    Path.Combine(
+                        driverTarget,
+                        "driver_slimevr.dll"
+                    );
+
+                progress?.Report(
+                    $"Installing Steam driver DLL to: {installedDriverDll}"
+                );
+
+                File.Copy(
+                    packagedDriverDll,
+                    installedDriverDll,
+                    overwrite: true
+                );
+
+                VerifyFileCopy(
+                    packagedDriverDll,
+                    installedDriverDll,
+                    "Steam driver_slimevr.dll"
+                );
+
+                progress?.Report(
+                    "Steam driver_slimevr.dll replacement verified."
+                );
+            }
+            else
+            {
+                progress?.Report(
+                    "Release bundle contains no OpenVR driver package; " +
+                    "existing Steam driver was left unchanged."
+                );
+            }
+
+            if (!File.Exists(
+                    executableTarget))
+            {
+                throw new IOException(
+                    $"Steam slimevr.exe is missing after installation: {executableTarget}"
+                );
+            }
+
+            if (!File.Exists(
+                    jarTarget))
+            {
+                throw new IOException(
+                    $"Steam slimevr.jar is missing after installation: {jarTarget}"
+                );
+            }
+
+            successful = true;
+
+            progress?.Report(
+                "Steam SlimeVR replacement completed successfully."
+            );
+        }
+        catch (Exception ex)
+        {
+            progress?.Report(
+                $"Steam update failed. Temporary extraction preserved at: {tempExtract}"
+            );
+
+            throw new Exception(
+                "Steam SlimeVR replacement failed.\n\n" +
+                $"Archive: {archiveFilePath}\n" +
+                $"Steam root: {steamRootDirectory}\n" +
+                $"Application: {applicationTarget}\n" +
+                $"Driver: {driverTarget}\n" +
+                $"Backup: {backupDirectory}\n" +
+                $"Temporary extraction: {tempExtract}\n\n" +
+                $"{ex.GetType().Name}: {ex.Message}",
+                ex
+            );
+        }
+        finally
+        {
+            if (successful)
+            {
+                TryDeleteDirectory(
+                    tempExtract
+                );
+            }
+        }
     }
 
     public async Task ReplaceDriverFilesAsync(
         string driverZipPath,
         string driverTargetDirectory)
     {
-        if (string.IsNullOrWhiteSpace(driverZipPath) ||
-            !File.Exists(driverZipPath))
-        {
-            throw new FileNotFoundException(
-                "OpenVR driver archive does not exist.",
-                driverZipPath
-            );
-        }
+        ValidateArchive(
+            driverZipPath
+        );
 
         if (string.IsNullOrWhiteSpace(
                 driverTargetDirectory))
         {
             throw new DirectoryNotFoundException(
-                "No SteamVR SlimeVR driver path was provided."
+                "No OpenVR driver target directory was provided."
             );
         }
+
+        driverZipPath =
+            Path.GetFullPath(
+                driverZipPath
+            );
 
         driverTargetDirectory =
             Path.GetFullPath(
@@ -685,7 +828,9 @@ public class ReplacerEngine
 
         StopRunningProcesses();
 
-        if (Directory.Exists(driverTargetDirectory))
+        // Back up the existing driver if one exists.
+        if (Directory.Exists(
+                driverTargetDirectory))
         {
             string[] existingFiles =
                 Directory.GetFiles(
@@ -709,24 +854,17 @@ public class ReplacerEngine
         }
 
         string tempExtract =
-            Path.Combine(
-                Path.GetTempPath(),
-                "SlimeVR_Driver_" +
-                Guid.NewGuid().ToString("N")
+            CreateTemporaryDirectory(
+                "SlimeVR_Driver_"
             );
 
         bool successful = false;
 
         try
         {
-            Directory.CreateDirectory(
-                tempExtract
-            );
-
-            ZipFile.ExtractToDirectory(
+            await ExtractArchiveAsync(
                 driverZipPath,
-                tempExtract,
-                overwriteFiles: true
+                tempExtract
             );
 
             string driverRoot =
@@ -734,20 +872,22 @@ public class ReplacerEngine
                     tempExtract
                 );
 
-            string[] driverFiles =
+            string[] extractedFiles =
                 Directory.GetFiles(
                     driverRoot,
                     "*",
                     SearchOption.AllDirectories
                 );
 
-            if (driverFiles.Length == 0)
+            if (extractedFiles.Length == 0)
             {
                 throw new InvalidDataException(
-                    "The OpenVR driver ZIP extracted zero files."
+                    "The OpenVR driver package extracted zero files."
                 );
             }
 
+            // If the ZIP has an extra wrapper directory, locate the
+            // actual driver manifest and use its directory as root.
             string? driverManifest =
                 Directory
                     .GetFiles(
@@ -782,35 +922,30 @@ public class ReplacerEngine
         }
         finally
         {
-            if (successful &&
-                Directory.Exists(tempExtract))
+            if (successful)
             {
-                try
-                {
-                    Directory.Delete(
-                        tempExtract,
-                        true
-                    );
-                }
-                catch
-                {
-                }
+                TryDeleteDirectory(
+                    tempExtract
+                );
             }
         }
-
-        await Task.CompletedTask;
     }
 
     public async Task SelfUpdateAppAsync(
         string archiveFilePath)
     {
+        ValidateArchive(
+            archiveFilePath
+        );
+
         string currentExePath =
             Process.GetCurrentProcess()
-                .MainModule?.FileName ??
-            Environment.ProcessPath ??
-            string.Empty;
+                .MainModule?.FileName
+            ?? Environment.ProcessPath
+            ?? string.Empty;
 
-        if (string.IsNullOrEmpty(currentExePath))
+        if (string.IsNullOrWhiteSpace(
+                currentExePath))
         {
             throw new Exception(
                 "Could not determine current executable path."
@@ -818,21 +953,17 @@ public class ReplacerEngine
         }
 
         string currentDirectory =
-            Path.GetDirectoryName(currentExePath)
+            Path.GetDirectoryName(
+                currentExePath
+            )
             ?? throw new Exception(
                 "Could not determine current application directory."
             );
 
         string tempExtract =
-            Path.Combine(
-                Path.GetTempPath(),
-                "SlimeVRExtender_SelfUpdate_" +
-                Guid.NewGuid().ToString("N")
+            CreateTemporaryDirectory(
+                "SlimeVRExtender_SelfUpdate_"
             );
-
-        Directory.CreateDirectory(
-            tempExtract
-        );
 
         await ExtractArchiveAsync(
             archiveFilePath,
@@ -850,7 +981,9 @@ public class ReplacerEngine
             string batchScriptPath =
                 Path.Combine(
                     Path.GetTempPath(),
-                    "update_extender.bat"
+                    "update_extender_" +
+                    Guid.NewGuid().ToString("N") +
+                    ".bat"
                 );
 
             string scriptContent =
@@ -885,7 +1018,9 @@ del ""%~f0""
             string scriptPath =
                 Path.Combine(
                     Path.GetTempPath(),
-                    "update_extender.sh"
+                    "update_extender_" +
+                    Guid.NewGuid().ToString("N") +
+                    ".sh"
                 );
 
             string escapedCopyRoot =
@@ -949,41 +1084,227 @@ rm -- ""$0""
         }
     }
 
+    private static string FindWindowsApplicationZip(
+        IEnumerable<string> files)
+    {
+        string? applicationZip =
+            files.FirstOrDefault(file =>
+            {
+                string name =
+                    Path.GetFileName(file);
+
+                return
+                    name.StartsWith(
+                        "SlimeVR-win-",
+                        StringComparison.OrdinalIgnoreCase
+                    ) &&
+                    name.EndsWith(
+                        ".zip",
+                        StringComparison.OrdinalIgnoreCase
+                    );
+            });
+
+        applicationZip ??=
+            files.FirstOrDefault(file =>
+            {
+                string name =
+                    Path.GetFileName(file);
+
+                return
+                    name.StartsWith(
+                        "SlimeVR-win",
+                        StringComparison.OrdinalIgnoreCase
+                    ) &&
+                    name.EndsWith(
+                        ".zip",
+                        StringComparison.OrdinalIgnoreCase
+                    ) &&
+                    !name.StartsWith(
+                        "slimevr-openvr-driver",
+                        StringComparison.OrdinalIgnoreCase
+                    );
+            });
+
+        if (applicationZip == null)
+        {
+            throw new InvalidDataException(
+                "The release bundle does not contain a SlimeVR-win*.zip application package."
+            );
+        }
+
+        return applicationZip;
+    }
+
+    private static string FindServerJar(
+        IEnumerable<string> files)
+    {
+        string? serverJar =
+            files.FirstOrDefault(file =>
+                string.Equals(
+                    Path.GetFileName(file),
+                    "slimevr.jar",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
+
+        if (serverJar == null)
+        {
+            throw new InvalidDataException(
+                "The release bundle does not contain slimevr.jar."
+            );
+        }
+
+        return serverJar;
+    }
+
+    private static string? FindDriverZip(
+        IEnumerable<string> files)
+    {
+        return files.FirstOrDefault(file =>
+        {
+            string name =
+                Path.GetFileName(file);
+
+            return
+                name.StartsWith(
+                    "slimevr-openvr-driver-",
+                    StringComparison.OrdinalIgnoreCase
+                ) &&
+                name.EndsWith(
+                    ".zip",
+                    StringComparison.OrdinalIgnoreCase
+                );
+        });
+    }
+
+    private static string FindApplicationRoot(
+        string extractedDirectory)
+    {
+        string? executable =
+            Directory
+                .GetFiles(
+                    extractedDirectory,
+                    "slimevr.exe",
+                    SearchOption.AllDirectories
+                )
+                .FirstOrDefault();
+
+        if (executable == null)
+        {
+            throw new InvalidDataException(
+                "The SlimeVR application package does not contain slimevr.exe."
+            );
+        }
+
+        return Path.GetDirectoryName(
+                   executable
+               )
+               ?? throw new InvalidDataException(
+                   "Could not determine the SlimeVR application root."
+               );
+    }
+
+    private static string FindStandaloneJarDestination(
+        string targetDirectory)
+    {
+        string rootJar =
+            Path.Combine(
+                targetDirectory,
+                "slimevr.jar"
+            );
+
+        if (File.Exists(rootJar))
+        {
+            return rootJar;
+        }
+
+        string[] existingJars =
+            Directory.GetFiles(
+                targetDirectory,
+                "slimevr.jar",
+                SearchOption.AllDirectories
+            );
+
+        if (existingJars.Length > 0)
+        {
+            return existingJars[0];
+        }
+
+        // Current standalone layout normally uses the root.
+        return rootJar;
+    }
+
+    private static void PreserveConfiguration(
+        string targetDirectory,
+        IDictionary<string, byte[]> configBackup)
+    {
+        string[] configFiles =
+        [
+            "slimevr.config.json",
+            "slimevr.settings.json",
+            "config.json"
+        ];
+
+        foreach (string configFile in configFiles)
+        {
+            string path =
+                Path.Combine(
+                    targetDirectory,
+                    configFile
+                );
+
+            if (File.Exists(path))
+            {
+                configBackup[configFile] =
+                    File.ReadAllBytes(path);
+            }
+        }
+    }
+
+    private static async Task RestoreConfigurationAsync(
+        string targetDirectory,
+        IDictionary<string, byte[]> configBackup)
+    {
+        foreach (var entry in configBackup)
+        {
+            string destination =
+                Path.Combine(
+                    targetDirectory,
+                    entry.Key
+                );
+
+            await File.WriteAllBytesAsync(
+                destination,
+                entry.Value
+            );
+        }
+    }
+
     private static async Task ExtractArchiveAsync(
         string archiveFilePath,
         string destinationDirectory)
     {
-        if (!File.Exists(archiveFilePath))
-        {
-            throw new FileNotFoundException(
-                "Archive does not exist.",
-                archiveFilePath
-            );
-        }
+        ValidateArchive(
+            archiveFilePath
+        );
 
-        FileInfo archiveInfo =
-            new(archiveFilePath);
-
-        if (archiveInfo.Length == 0)
-        {
-            throw new InvalidDataException(
-                $"Archive is empty: {archiveFilePath}"
-            );
-        }
+        Directory.CreateDirectory(
+            destinationDirectory
+        );
 
         if (archiveFilePath.EndsWith(
                 ".zip",
                 StringComparison.OrdinalIgnoreCase))
         {
-            // Validate ZIP before extraction.
-
             using (ZipArchive archive =
-                   ZipFile.OpenRead(archiveFilePath))
+                   ZipFile.OpenRead(
+                       archiveFilePath
+                   ))
             {
                 if (archive.Entries.Count == 0)
                 {
                     throw new InvalidDataException(
-                        $"ZIP contains no entries: {archiveFilePath}"
+                        $"ZIP archive contains no entries: {archiveFilePath}"
                     );
                 }
             }
@@ -1025,8 +1346,7 @@ rm -- ""$0""
         }
 
         throw new NotSupportedException(
-            $"Unsupported archive format: " +
-            $"{Path.GetFileName(archiveFilePath)}"
+            $"Unsupported archive format: {Path.GetFileName(archiveFilePath)}"
         );
     }
 
@@ -1060,7 +1380,8 @@ rm -- ""$0""
         string sourceDirectory,
         string destinationDirectory)
     {
-        if (!Directory.Exists(sourceDirectory))
+        if (!Directory.Exists(
+                sourceDirectory))
         {
             throw new DirectoryNotFoundException(
                 $"Source directory does not exist: {sourceDirectory}"
@@ -1099,7 +1420,7 @@ rm -- ""$0""
                     destinationFile
                 );
 
-            if (!string.IsNullOrEmpty(
+            if (!string.IsNullOrWhiteSpace(
                     destinationParent))
             {
                 Directory.CreateDirectory(
@@ -1117,6 +1438,111 @@ rm -- ""$0""
         }
 
         return copiedFiles;
+    }
+
+    private static void VerifyFileCopy(
+        string sourceFile,
+        string destinationFile,
+        string description)
+    {
+        if (!File.Exists(sourceFile))
+        {
+            throw new FileNotFoundException(
+                $"Source {description} does not exist.",
+                sourceFile
+            );
+        }
+
+        if (!File.Exists(destinationFile))
+        {
+            throw new IOException(
+                $"{description} was not installed: {destinationFile}"
+            );
+        }
+
+        FileInfo sourceInfo =
+            new(sourceFile);
+
+        FileInfo destinationInfo =
+            new(destinationFile);
+
+        if (sourceInfo.Length !=
+            destinationInfo.Length)
+        {
+            throw new IOException(
+                $"{description} verification failed.\n\n" +
+                $"Source: {sourceInfo.Length:N0} bytes\n" +
+                $"Installed: {destinationInfo.Length:N0} bytes"
+            );
+        }
+    }
+
+    private static void ValidateArchive(
+        string archiveFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(
+                archiveFilePath))
+        {
+            throw new ArgumentException(
+                "Archive path cannot be empty.",
+                nameof(archiveFilePath)
+            );
+        }
+
+        if (!File.Exists(
+                archiveFilePath))
+        {
+            throw new FileNotFoundException(
+                "Archive does not exist.",
+                archiveFilePath
+            );
+        }
+
+        FileInfo archiveInfo =
+            new(archiveFilePath);
+
+        if (archiveInfo.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"Archive is empty: {archiveFilePath}"
+            );
+        }
+    }
+
+    private static string CreateTemporaryDirectory(
+        string prefix)
+    {
+        string path =
+            Path.Combine(
+                Path.GetTempPath(),
+                prefix +
+                Guid.NewGuid().ToString("N")
+            );
+
+        Directory.CreateDirectory(
+            path
+        );
+
+        return path;
+    }
+
+    private static void TryDeleteDirectory(
+        string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(
+                    path,
+                    true
+                );
+            }
+        }
+        catch
+        {
+            // Cleanup failure should not invalidate a successful update.
+        }
     }
 
     private static string EscapeShellSingleQuoted(

@@ -129,6 +129,8 @@ jobs:
         if: matrix.os.platform == 'linux'
         shell: bash
         run: |
+          set -e
+
           sudo apt-get update
 
           sudo apt-get install -y \
@@ -154,31 +156,71 @@ jobs:
         with:
           version: 16
 
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
       - name: Install Frontend Dependencies
         run: pnpm install
+
+      - name: Build SolarXR FlatBuffers Compiler
+        shell: bash
+        run: |
+          set -e
+
+          cmake \
+            -S solarxr-protocol/lib/flatbuffers \
+            -B solarxr-protocol/lib/flatbuffers/build-ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFLATBUFFERS_BUILD_TESTS=OFF \
+            -DFLATBUFFERS_BUILD_FLATLIB=OFF \
+            -DFLATBUFFERS_BUILD_SHAREDLIB=OFF \
+            -DFLATBUFFERS_BUILD_GRPCTEST=OFF
+
+          cmake \
+            --build solarxr-protocol/lib/flatbuffers/build-ci \
+            --config Release \
+            --target flatc \
+            -j 4
+
+          FLATC=""
+
+          if [ -f "solarxr-protocol/lib/flatbuffers/build-ci/flatc" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/flatc"
+          elif [ -f "solarxr-protocol/lib/flatbuffers/build-ci/Release/flatc.exe" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/Release/flatc.exe"
+          elif [ -f "solarxr-protocol/lib/flatbuffers/build-ci/flatc.exe" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/flatc.exe"
+          fi
+
+          if [ -z "$FLATC" ]; then
+            echo "ERROR: flatc was not produced."
+            find solarxr-protocol/lib/flatbuffers/build-ci -iname "flatc*" -print
+            exit 1
+          fi
+
+          FLATC_DIR="$(dirname "$FLATC")"
+
+          echo "$FLATC_DIR" >> "$GITHUB_PATH"
+
+          echo "Using flatc:"
+          echo "$FLATC"
+
+          "$FLATC" --version
 
       - name: Regenerate SolarXR Protocol
         shell: bash
         run: |
           set -e
 
+          echo "flatc on PATH:"
+          command -v flatc || true
+
+          flatc --version
+
           cd solarxr-protocol
 
-          if [ -f "./generate-flatbuffer.sh" ]; then
-            chmod +x ./generate-flatbuffer.sh
-            ./generate-flatbuffer.sh
-          elif [ -f "./generate-flatbuffers.sh" ]; then
-            chmod +x ./generate-flatbuffers.sh
-            ./generate-flatbuffers.sh
-          elif [ -f "./generate.sh" ]; then
-            chmod +x ./generate.sh
-            ./generate.sh
-          else
-            echo "No SolarXR FlatBuffers generation script found."
-            echo "Available files:"
-            ls -lah
-            exit 1
-          fi
+          chmod +x ./generate-flatbuffer.sh
+          ./generate-flatbuffer.sh
 
           cd ..
 
@@ -210,10 +252,6 @@ jobs:
           echo ""
           echo "Relevant generated header section:"
           sed -n '700,950p' "$HEADER"
-
-      - name: Setup CMake
-        if: matrix.os.platform != 'macos'
-        uses: lukka/get-cmake@latest
 
       - name: Configure Bindings Provider
         if: matrix.os.platform != 'macos'
@@ -542,33 +580,81 @@ jobs:
           node-version-file: '.node-version'
           cache: pnpm
 
+      - name: Setup CMake
+        uses: lukka/get-cmake@latest
+
       - name: Install Frontend Dependencies
         run: pnpm install
+
+      - name: Build SolarXR FlatBuffers Compiler
+        shell: bash
+        run: |
+          set -e
+
+          cmake \
+            -S solarxr-protocol/lib/flatbuffers \
+            -B solarxr-protocol/lib/flatbuffers/build-ci \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFLATBUFFERS_BUILD_TESTS=OFF \
+            -DFLATBUFFERS_BUILD_FLATLIB=OFF \
+            -DFLATBUFFERS_BUILD_SHAREDLIB=OFF \
+            -DFLATBUFFERS_BUILD_GRPCTEST=OFF
+
+          cmake \
+            --build solarxr-protocol/lib/flatbuffers/build-ci \
+            --config Release \
+            --target flatc \
+            -j 4
+
+          FLATC=""
+
+          if [ -f "solarxr-protocol/lib/flatbuffers/build-ci/flatc" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/flatc"
+          elif [ -f "solarxr-protocol/lib/flatbuffers/build-ci/Release/flatc.exe" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/Release/flatc.exe"
+          elif [ -f "solarxr-protocol/lib/flatbuffers/build-ci/flatc.exe" ]; then
+            FLATC="$(pwd)/solarxr-protocol/lib/flatbuffers/build-ci/flatc.exe"
+          fi
+
+          if [ -z "$FLATC" ]; then
+            echo "ERROR: flatc was not produced."
+            find solarxr-protocol/lib/flatbuffers/build-ci -iname "flatc*" -print
+            exit 1
+          fi
+
+          FLATC_DIR="$(dirname "$FLATC")"
+
+          echo "$FLATC_DIR" >> "$GITHUB_PATH"
+
+          "$FLATC" --version
 
       - name: Regenerate SolarXR Protocol
         shell: bash
         run: |
           set -e
 
+          flatc --version
+
           cd solarxr-protocol
 
-          if [ -f "./generate-flatbuffer.sh" ]; then
-            chmod +x ./generate-flatbuffer.sh
-            ./generate-flatbuffer.sh
-          elif [ -f "./generate-flatbuffers.sh" ]; then
-            chmod +x ./generate-flatbuffers.sh
-            ./generate-flatbuffers.sh
-          elif [ -f "./generate.sh" ]; then
-            chmod +x ./generate.sh
-            ./generate.sh
-          else
-            echo "No SolarXR FlatBuffers generation script found."
-            echo "Available files:"
-            ls -lah
+          chmod +x ./generate-flatbuffer.sh
+          ./generate-flatbuffer.sh
+
+          cd ..
+
+      - name: Inspect Generated SolarXR Header
+        shell: bash
+        run: |
+          set -e
+
+          HEADER="solarxr-protocol/protocol/cpp/include/solarxr_protocol/generated/all_generated.h"
+
+          if grep -nE '^(<<<<<<<|=======|>>>>>>>)' "$HEADER"; then
+            echo "ERROR: Generated SolarXR C++ header contains conflict markers."
             exit 1
           fi
 
-          cd ..
+          echo "Generated SolarXR header is clean."
 
       - name: Build GUI
         env:

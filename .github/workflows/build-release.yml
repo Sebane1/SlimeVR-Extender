@@ -253,6 +253,25 @@ jobs:
           echo "Relevant generated header section:"
           sed -n '700,950p' "$HEADER"
 
+      # The temporary FlatBuffers CMake build contains architecture-specific
+      # binaries. electron-builder sees solarxr-protocol as a pnpm workspace
+      # dependency, so these files must not be present when creating a macOS
+      # universal application.
+      - name: Clean FlatBuffers Build Files for macOS
+        if: matrix.os.platform == 'macos'
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf solarxr-protocol/lib/flatbuffers/build-ci
+
+          echo "Removed temporary FlatBuffers build files before universal Electron packaging."
+
+          if [ -d "solarxr-protocol/lib/flatbuffers/build-ci" ]; then
+            echo "ERROR: FlatBuffers build directory still exists."
+            exit 1
+          fi
+
       - name: Configure Bindings Provider
         if: matrix.os.platform != 'macos'
         shell: bash

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace SlimeVRExtender.Services;
@@ -19,35 +20,53 @@ public class GitHubRelease
 
 public class ReleaseService
 {
+    public const string DefaultRepository = "Sebane1/SlimeVR-Extender";
+
     private readonly HttpClient _httpClient;
     private readonly PlatformService _platformService;
 
     public ReleaseService(PlatformService platformService)
     {
         _platformService = platformService;
+
         _httpClient = new HttpClient();
-        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("SlimeVR-Extender/1.0 (C# App)");
+        _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "SlimeVR-Extender/1.0 (C# App)"
+        );
     }
 
-    public async Task<GitHubRelease?> FetchLatestReleaseAsync(string repoOwnerAndName = "Sebane1/SlimeVR-Server")
+    public async Task<GitHubRelease?> FetchLatestReleaseAsync(
+        string repoOwnerAndName = DefaultRepository)
     {
-        string url = $"https://api.github.com/repos/{repoOwnerAndName}/releases/latest";
+        string url =
+            $"https://api.github.com/repos/{repoOwnerAndName}/releases/latest";
+
         try
         {
             var response = await _httpClient.GetAsync(url);
+
             if (!response.IsSuccessStatusCode)
             {
-                // Fallback to list releases if /latest fails (e.g. if pre-releases or workflow tags are used)
-                url = $"https://api.github.com/repos/{repoOwnerAndName}/releases";
-                response = await _httpClient.GetAsync(url);
-                if (!response.IsSuccessStatusCode) return null;
 
-                string jsonArray = await response.Content.ReadAsStringAsync();
-                var releases = JsonSerializer.Deserialize<List<GitHubRelease>>(jsonArray);
+                url =
+                    $"https://api.github.com/repos/{repoOwnerAndName}/releases";
+
+                response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                string jsonArray =
+                    await response.Content.ReadAsStringAsync();
+
+                var releases =
+                    JsonSerializer.Deserialize<List<GitHubRelease>>(jsonArray);
+
                 return releases?.FirstOrDefault();
             }
 
             string json = await response.Content.ReadAsStringAsync();
+
             return JsonSerializer.Deserialize<GitHubRelease>(json);
         }
         catch
@@ -56,47 +75,182 @@ public class ReleaseService
         }
     }
 
-    public GitHubReleaseAsset? GetMatchingPlatformAsset(GitHubRelease release)
+    /// <summary>
+    /// Returns the packaged SlimeVR Server build for the current OS.
+    ///
+    public GitHubReleaseAsset? GetMatchingPlatformAsset(
+        GitHubRelease release)
     {
-        string keyword = _platformService.GetReleaseAssetKeyword().ToLower();
-        return release.assets.FirstOrDefault(a => a.name.ToLower().Contains(keyword));
+        string? expectedName = GetServerAssetName();
+
+        if (string.IsNullOrEmpty(expectedName))
+            return null;
+
+        return release.assets.FirstOrDefault(
+            a => string.Equals(
+                a.name,
+                expectedName,
+                StringComparison.OrdinalIgnoreCase
+            )
+        );
     }
 
-    public GitHubReleaseAsset? GetMatchingDriverAsset(GitHubRelease release)
+    /// <summary>
+    /// Returns the SlimeVR Extender application's own update package.
+    /// </summary>
+    public GitHubReleaseAsset? GetMatchingExtenderAppAsset(
+        GitHubRelease release)
     {
-        string driverZip = _platformService.GetDriverZipName().ToLower();
-        if (string.IsNullOrEmpty(driverZip)) return null;
+        string? expectedName = GetExtenderAssetName();
 
-        return release.assets.FirstOrDefault(a => a.name.ToLower().Contains("driver") || a.name.ToLower() == driverZip);
+        if (!string.IsNullOrEmpty(expectedName))
+        {
+            var exactMatch = release.assets.FirstOrDefault(
+                a => string.Equals(
+                    a.name,
+                    expectedName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
+
+            if (exactMatch != null)
+                return exactMatch;
+        }
+
+        // Fallback for future archive naming changes.
+        string keyword =
+            _platformService.GetReleaseAssetKeyword().ToLowerInvariant();
+
+        return release.assets.FirstOrDefault(a =>
+        {
+            string name = a.name.ToLowerInvariant();
+
+            return name.StartsWith("slimevr-extender-app-") &&
+                   name.Contains(keyword);
+        });
     }
 
-    public GitHubReleaseAsset? GetMatchingExtenderAppAsset(GitHubRelease release)
+    public GitHubReleaseAsset? GetMatchingDriverAsset(
+        GitHubRelease release)
     {
-        string keyword = _platformService.GetReleaseAssetKeyword().ToLower();
-        return release.assets.FirstOrDefault(a => a.name.ToLower().StartsWith("slimevr-extender") && a.name.ToLower().Contains(keyword));
+        string driverZip = _platformService.GetDriverZipName();
+
+        if (string.IsNullOrEmpty(driverZip))
+            return null;
+
+        // Prefer the exact known driver filename.
+        var exactMatch = release.assets.FirstOrDefault(
+            a => string.Equals(
+                a.name,
+                driverZip,
+                StringComparison.OrdinalIgnoreCase
+            )
+        );
+
+        if (exactMatch != null)
+            return exactMatch;
+
+        // Allow packaged releases to rename the driver slightly.
+        return release.assets.FirstOrDefault(
+            a => a.name.Contains(
+                "driver",
+                StringComparison.OrdinalIgnoreCase
+            )
+        );
     }
 
-    public async Task<string> DownloadFileAsync(string downloadUrl, string destinationPath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    private static string? GetServerAssetName()
     {
-        using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return "slimevr-server-windows.zip";
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return RuntimeInformation.OSArchitecture ==
+                   Architecture.Arm64
+                ? "slimevr-server-linux-aarch64.tar.gz"
+                : "slimevr-server-linux-x64.tar.gz";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return "slimevr-server-macos.zip";
+
+        return null;
+    }
+
+    private static string? GetExtenderAssetName()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return "slimevr-extender-app-windows-x64.zip";
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return RuntimeInformation.OSArchitecture ==
+                   Architecture.Arm64
+                ? "slimevr-extender-app-linux-aarch64.tar.gz"
+                : "slimevr-extender-app-linux-x64.tar.gz";
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return "slimevr-extender-app-macos.zip";
+
+        return null;
+    }
+
+    public async Task<string> DownloadFileAsync(
+        string downloadUrl,
+        string destinationPath,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            downloadUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken
+        );
+
         response.EnsureSuccessStatusCode();
 
-        long totalBytes = response.Content.Headers.ContentLength ?? -1L;
-        using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+        long totalBytes =
+            response.Content.Headers.ContentLength ?? -1L;
+
+        await using var contentStream =
+            await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        await using var fileStream = new FileStream(
+            destinationPath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            8192,
+            true
+        );
 
         byte[] buffer = new byte[16384];
         long totalRead = 0;
-        int bytesRead;
 
-        while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
+        while (true)
         {
-            await fileStream.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+            int bytesRead = await contentStream.ReadAsync(
+                buffer.AsMemory(0, buffer.Length),
+                cancellationToken
+            );
+
+            if (bytesRead == 0)
+                break;
+
+            await fileStream.WriteAsync(
+                buffer.AsMemory(0, bytesRead),
+                cancellationToken
+            );
+
             totalRead += bytesRead;
 
             if (totalBytes > 0 && progress != null)
             {
-                progress.Report((double)totalRead / totalBytes * 100.0);
+                progress.Report(
+                    (double)totalRead / totalBytes * 100.0
+                );
             }
         }
 

@@ -209,7 +209,7 @@ public class MainViewModel : INotifyPropertyChanged
             var platformAsset = _releaseService.GetMatchingPlatformAsset(release);
             var driverAsset = _releaseService.GetMatchingDriverAsset(release);
 
-            // 1. Download Platform Release if Standalone or Steam selected
+            // Download Platform Release if Standalone or Steam selected
             string releasePackageFile = string.Empty;
             if ((UpdateStandalone || UpdateSteam) && platformAsset != null)
             {
@@ -219,7 +219,7 @@ public class MainViewModel : INotifyPropertyChanged
                 await _releaseService.DownloadFileAsync(platformAsset.browser_download_url, releasePackageFile, progress);
             }
 
-            // 2. Download Driver if selected and separate driver asset is available
+            // Download Driver if selected and separate driver asset is available
             string driverPackageFile = string.Empty;
             if (UpdateDriver)
             {
@@ -251,7 +251,17 @@ public class MainViewModel : INotifyPropertyChanged
                     StandalonePath = _pathResolver.DetectStandaloneSlimeVRPath();
 
                 StatusText = "Updating Standalone SlimeVR...";
-                await _replacerEngine.ReplaceReleaseFilesAsync(releasePackageFile, StandalonePath, true);
+
+                var replacementProgress = new Progress<string>(message =>
+                {
+                    StatusText = message;
+                });
+
+                await _replacerEngine.ReplaceReleaseFilesAsync(
+                    releasePackageFile,
+                    StandalonePath,
+                    true,
+                    replacementProgress);
             }
 
             // Apply Steam update
@@ -306,7 +316,7 @@ public class MainViewModel : INotifyPropertyChanged
             }
 
             ProgressValue = 100;
-            StatusText = "SUCCESS! All selected components have been replaced and updated successfully.";
+            StatusText = "SUCCESS! All selected components have been replaced and updated successfully. You can close the this and run SlimeVR Server";
         }
         catch (Exception ex)
         {

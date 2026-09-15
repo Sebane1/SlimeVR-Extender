@@ -1,7 +1,7 @@
 # SlimeVR-Extender
 
-A multiplatform patcher that adds additional bones that are unsupported by the main SlimeVR release.
-These additions are currently based on the SlimeVR re-write which is still in active experimental development. Expect bugs.
+A temporary multiplatform patcher that adds additional bones that are unsupported by the main SlimeVR release.
+These additions are currently based on the SlimeVR rewrite which is still in active experimental development. Expect bugs.
 
 Extra bones added:
 - Tail Tracking

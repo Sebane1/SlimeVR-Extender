@@ -406,16 +406,15 @@ jobs:
 
       - name: Package Extender - Windows
         if: matrix.os.platform == 'windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -e
+          $source = "extender-dist/${{ matrix.os.extender_rid }}/*"
+          $destination = "${{ matrix.os.extender_archive }}"
 
-          cd "extender-dist/${{ matrix.os.extender_rid }}"
-
-          zip \
-            -r \
-            "../../${{ matrix.os.extender_archive }}" \
-            .
+          Compress-Archive `
+            -Path $source `
+            -DestinationPath $destination `
+            -Force
 
       - name: Package Extender - Linux
         if: matrix.os.platform == 'linux'
@@ -443,30 +442,31 @@ jobs:
 
       - name: Assemble Windows Release
         if: matrix.os.platform == 'windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -e
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "release-package" | Out-Null
 
-          mkdir -p release-package
+          Get-ChildItem "gui/electron/dist/artifacts/win" -File | ForEach-Object {
+            Copy-Item $_.FullName "release-package/"
+          }
 
-          find gui/electron/dist/artifacts/win \
-            -maxdepth 1 \
-            -type f \
-            -exec cp {} release-package/ \;
+          Copy-Item `
+            "server/desktop/build/libs/slimevr.jar" `
+            "release-package/slimevr.jar"
 
-          cp \
-            server/desktop/build/libs/slimevr.jar \
-            release-package/slimevr.jar
+          $driver = "driver/${{ matrix.os.driver_file }}"
 
-          if [ -f "driver/${{ matrix.os.driver_file }}" ]; then
-            cp \
-              "driver/${{ matrix.os.driver_file }}" \
-              release-package/
-          fi
+          if (Test-Path $driver) {
+            Copy-Item $driver "release-package/"
+          }
 
-          cd release-package
-          zip -r ../slimevr-server-windows.zip .
-          cd ..
+          Compress-Archive `
+            -Path "release-package/*" `
+            -DestinationPath "slimevr-server-windows.zip" `
+            -Force
 
       - name: Assemble Linux Release
         if: matrix.os.platform == 'linux'
@@ -625,6 +625,9 @@ jobs:
           FLATC_DIR="$(dirname "$FLATC")"
 
           echo "$FLATC_DIR" >> "$GITHUB_PATH"
+
+          echo "Using flatc:"
+          echo "$FLATC"
 
           "$FLATC" --version
 

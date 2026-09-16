@@ -19,5 +19,6 @@ MacOS Patcher:
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-extender-app-macos.zip
 
 Linux Patchers:
+
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-server-linux-aarch64.tar.gz
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-server-linux-x64.tar.gz

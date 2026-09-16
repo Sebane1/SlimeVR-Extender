@@ -13,9 +13,11 @@ Extra bones added:
 Simply double-click `SlimeVR-Extender` and follow any prompts. The extra bones should be present afterwards. Run again to check for updates.
 
 Windows Patcher:
+
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-extender-app-windows-x64.zip
 
 MacOS Patcher:
+
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-extender-app-macos.zip
 
 Linux Patchers:

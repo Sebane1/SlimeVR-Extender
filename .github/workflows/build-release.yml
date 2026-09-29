@@ -316,7 +316,9 @@ jobs:
       - name: Build GUI
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: pnpm run build
+        run: |
+          pnpm --filter @slimevr/gui-electron run gen:javaversion
+          pnpm run build
 
       - name: Download OpenVR Driver
         if: matrix.os.driver_url != ''
@@ -683,7 +685,9 @@ jobs:
       - name: Build GUI
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: pnpm run build
+        run: |
+          pnpm --filter @slimevr/gui-electron run gen:javaversion
+          pnpm run build
 
       - name: Build Android APK
         shell: bash

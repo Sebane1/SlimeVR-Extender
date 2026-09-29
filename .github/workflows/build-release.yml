@@ -301,10 +301,7 @@ jobs:
         run: |
           set -e
 
-          chmod +x ./gradlew || true
-
-          ./gradlew \
-            --project-dir . \
+          java -jar gradle/wrapper/gradle-wrapper.jar \
             :server:desktop:shadowJar \
             --build-cache
 
@@ -698,10 +695,7 @@ jobs:
         run: |
           set -e
 
-          chmod +x ./gradlew || true
-
-          ./gradlew \
-            --project-dir . \
+          java -jar gradle/wrapper/gradle-wrapper.jar \
             :server:android:build \
             --build-cache
 

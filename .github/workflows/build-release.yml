@@ -301,7 +301,7 @@ jobs:
         run: |
           set -e
 
-          java -jar gradle/wrapper/gradle-wrapper.jar \
+          gradle \
             :server:desktop:shadowJar \
             --build-cache
 
@@ -695,7 +695,7 @@ jobs:
         run: |
           set -e
 
-          java -jar gradle/wrapper/gradle-wrapper.jar \
+          gradle \
             :server:android:build \
             --build-cache
 

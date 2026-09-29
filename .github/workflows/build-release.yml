@@ -304,6 +304,7 @@ jobs:
           chmod +x ./gradlew || true
 
           ./gradlew \
+            --project-dir . \
             :server:desktop:shadowJar \
             --build-cache
 
@@ -700,6 +701,7 @@ jobs:
           chmod +x ./gradlew || true
 
           ./gradlew \
+            --project-dir . \
             :server:android:build \
             --build-cache
 

@@ -24,3 +24,7 @@ Linux Patchers:
 
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-server-linux-aarch64.tar.gz
 https://github.com/Sebane1/SlimeVR-Extender/releases/download/latest/slimevr-server-linux-x64.tar.gz
+
+### Using In VRChat
+Use this collection of VRChat tools!
+https://github.com/Sebane1/VRCSlimeVRExtendedRigSupport
